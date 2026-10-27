@@ -1,0 +1,15 @@
+{
+  "name": "vault-convert",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline, browser-only password vault converter and editor. Your data never leaves the page.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test tests/parsers.test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

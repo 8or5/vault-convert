@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vault Convert</title>
+<meta name="referrer" content="no-referrer" />
+<!-- No network access is possible from this page: every fetch, XHR, WebSocket and worker is blocked. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+<style>/*__CSS__*/</style>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">⬡</span>
+      <div><strong>Vault Convert</strong><small>Offline · nothing leaves this page</small></div>
+    </div>
+    <button class="btn ghost icon mobile-only" data-action="toggle-sidebar" aria-label="Toggle sidebar">☰</button>
+    <label class="search">
+      <span class="sr-only">Search</span>
+      <input id="search" type="search" placeholder="Search names, usernames, sites, notes  ( / )" autocomplete="off" />
+    </label>
+    <div class="top-actions">
+      <button class="btn" data-action="import">Import</button>
+      <button class="btn" data-action="new-item" title="New item (N)">+ New</button>
+      <button class="btn ghost" id="btn-undo" data-action="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button class="btn primary" data-action="export" title="Export (Ctrl+E)">Export</button>
+      <button class="btn ghost icon" data-action="prefs" aria-label="Preferences" title="Preferences">⚙</button>
+    </div>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" hidden></aside>
+    <main class="main" id="main">
+      <section id="welcome" class="welcome"></section>
+      <section id="workspace" class="workspace" hidden>
+        <div id="banner"></div>
+        <div class="toolbar">
+          <div id="counts" class="counts"></div>
+          <div id="bulk" class="bulk" hidden></div>
+          <label class="sort">Sort
+            <select id="sort">
+              <option value="name">Name</option>
+              <option value="updated">Recently updated</option>
+              <option value="vault">Vault / folder</option>
+              <option value="username">Username</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table class="items">
+            <thead id="thead"></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <aside class="detail" id="detail" hidden></aside>
+  </div>
+
+  <dialog id="modal" class="modal"></dialog>
+  <input type="file" id="file-input" multiple hidden accept=".csv,.json,.xml,.1pux,.1pif,.zip,.txt" />
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</div>
+<script>/*__JS__*/</script>
+</body>
+</html>

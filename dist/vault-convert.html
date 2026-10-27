@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vault Convert</title>
+<meta name="referrer" content="no-referrer" />
+<!-- No network access is possible from this page: every fetch, XHR, WebSocket and worker is blocked. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+<style>/* Vault Convert: visual system. Light and dark themes, two densities, system fonts only. */
+
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --surface-3: #e7edf3;
+  --text: #0f172a;
+  --muted: #5b6b7f;
+  --border: #dde4ec;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --accent-ink: #ffffff;
+  --accent-soft: #d5f3ee;
+  --danger: #b91c1c;
+  --danger-soft: #fde8e8;
+  --warn: #92400e;
+  --warn-soft: #fdf1d6;
+  --info: #1e40af;
+  --info-soft: #dfe9fb;
+  --ok: #166534;
+  --ok-soft: #dcf5e3;
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 8px 24px rgba(15, 23, 42, .08);
+  --row-h: 56px;
+  --sidebar-w: 248px;
+  --detail-w: 430px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0b1119;
+  --surface: #121a25;
+  --surface-2: #0f1722;
+  --surface-3: #1b2636;
+  --text: #e6edf5;
+  --muted: #94a3b8;
+  --border: #223043;
+  --accent: #2dd4bf;
+  --accent-strong: #5eead4;
+  --accent-ink: #052e2b;
+  --accent-soft: #113a37;
+  --danger: #f87171;
+  --danger-soft: #3a1717;
+  --warn: #fbbf24;
+  --warn-soft: #3a2c10;
+  --info: #93c5fd;
+  --info-soft: #172a4a;
+  --ok: #86efac;
+  --ok-soft: #123222;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    --bg: #0b1119; --surface: #121a25; --surface-2: #0f1722; --surface-3: #1b2636;
+    --text: #e6edf5; --muted: #94a3b8; --border: #223043;
+    --accent: #2dd4bf; --accent-strong: #5eead4; --accent-ink: #052e2b; --accent-soft: #113a37;
+    --danger: #f87171; --danger-soft: #3a1717; --warn: #fbbf24; --warn-soft: #3a2c10;
+    --info: #93c5fd; --info-soft: #172a4a; --ok: #86efac; --ok-soft: #123222;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .35);
+    color-scheme: dark;
+  }
+}
+
+[data-density="compact"] { --row-h: 40px; }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font: 14px/1.45 var(--font);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+body.dragging::after {
+  content: "Drop to import";
+  position: fixed; inset: 12px; border: 2px dashed var(--accent); border-radius: 16px;
+  display: grid; place-items: center; font-size: 22px; font-weight: 600; color: var(--accent);
+  background: color-mix(in srgb, var(--bg) 85%, transparent); pointer-events: none; z-index: 50;
+}
+h1, h2, h3, h4 { margin: 0; line-height: 1.2; }
+h1 { font-size: clamp(24px, 3.2vw, 34px); letter-spacing: -.02em; }
+h2 { font-size: 18px; margin-bottom: 10px; }
+h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 28px 0 10px; }
+h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 14px 10px 6px; }
+p { margin: 0 0 10px; }
+small { color: var(--muted); font-size: 12px; }
+code { font-family: var(--mono); font-size: 12px; background: var(--surface-3); padding: 1px 5px; border-radius: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.lede { color: var(--muted); font-size: 15px; max-width: 62ch; }
+.fine { color: var(--muted); font-size: 12.5px; }
+.eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 11.5px; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
+
+/* ---------- top bar ---------- */
+.app { min-height: 100%; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 14px;
+  height: 60px; padding: 0 16px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 10px; min-width: 210px; }
+.brand strong { display: block; font-size: 15px; letter-spacing: -.01em; }
+.brand small { font-size: 11.5px; }
+.logo {
+  width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong)); color: var(--accent-ink);
+  font-size: 18px; font-weight: 700;
+}
+.search { flex: 1; max-width: 640px; }
+.search input {
+  width: 100%; height: 38px; padding: 0 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+}
+.search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--surface); }
+.top-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+
+/* ---------- buttons & inputs ---------- */
+.btn {
+  appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  height: 34px; padding: 0 12px; border-radius: var(--radius-sm); font: inherit; font-weight: 500;
+  cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  transition: background .12s, border-color .12s, transform .05s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-2); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-strong); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.ghost:hover:not(:disabled) { background: var(--surface-2); }
+.btn.icon { width: 34px; padding: 0; justify-content: center; font-size: 15px; }
+.btn.sm { height: 28px; padding: 0 9px; font-size: 12.5px; }
+.btn.on { background: var(--accent-soft); color: var(--accent-strong); border-color: transparent; }
+.mobile-only { display: none; }
+
+input, select, textarea {
+  font: inherit; color: var(--text); background: var(--surface); width: 100%;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; min-height: 34px;
+}
+textarea { resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+input[type="checkbox"], input[type="radio"] { width: auto; min-height: 0; accent-color: var(--accent); }
+label { display: block; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+label input, label select, label textarea { margin-top: 5px; color: var(--text); }
+label.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13.5px; }
+label.check input { margin: 0; }
+fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin: 0; }
+legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+
+/* ---------- layout ---------- */
+.layout { flex: 1; display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); min-height: 0; }
+.layout.has-detail { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) var(--detail-w); }
+.layout > .sidebar[hidden] { display: none; }
+.layout > .sidebar + .main { grid-column: auto; }
+.main { min-width: 0; padding: 20px 22px 40px; }
+.layout:not(.has-detail) .main { grid-column: 2 / span 2; }
+.sidebar {
+  border-right: 1px solid var(--border); background: var(--surface-2);
+  padding: 8px 10px 24px; overflow-y: auto; position: sticky; top: 60px; height: calc(100vh - 60px);
+}
+.sidebar section + section { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 4px; }
+.nav {
+  appearance: none; border: 0; background: transparent; color: var(--text); font: inherit;
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border-radius: 8px; cursor: pointer; text-align: left; min-width: 0;
+}
+.nav:hover { background: var(--surface-3); }
+.nav.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.nav.depth-1 { padding-left: 26px; font-size: 13px; color: var(--muted); }
+.nav.depth-1.active { color: var(--accent-strong); }
+.nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.nav-row { position: relative; }
+.nav-row .nav { padding-right: 70px; }
+.mini { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: none; gap: 2px; }
+.nav-row:hover .mini, .nav-row:focus-within .mini { display: flex; }
+.mini button {
+  width: 22px; height: 22px; border: 0; border-radius: 6px; background: var(--surface); color: var(--muted);
+  cursor: pointer; font-size: 12px;
+}
+.mini button:hover { color: var(--text); background: var(--surface-3); }
+.sidebar-add { padding: 8px 4px; }
+
+.main .welcome[hidden], .workspace[hidden] { display: none; }
+.welcome { max-width: 820px; margin: 24px auto 0; }
+.hero { padding: 18px 0; }
+.dropzone {
+  margin: 24px 0 18px; border: 2px dashed color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-radius: 16px; padding: 38px 20px; text-align: center; cursor: pointer; background: var(--surface);
+  display: grid; gap: 6px; justify-items: center; transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone:focus-visible { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+.dropzone strong { font-size: 16px; }
+.dropzone span { color: var(--muted); font-size: 13px; }
+.dz-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-size: 20px; }
+.hero-actions { display: flex; gap: 10px; }
+.format-chips { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.format-chips li { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+
+/* ---------- workspace ---------- */
+.banner {
+  display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: var(--radius); margin-bottom: 14px; font-size: 13.5px;
+  border: 1px solid var(--border);
+}
+.banner.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.banner.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; min-height: 36px; }
+.counts { color: var(--muted); font-size: 13px; }
+.counts strong { color: var(--text); }
+.sel { color: var(--accent-strong); font-weight: 600; }
+.bulk { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; background: var(--surface); border: 1px solid var(--border); padding: 6px; border-radius: var(--radius); box-shadow: var(--shadow); }
+.bulk[hidden] { display: none; }
+.sort { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+.sort select { width: auto; min-height: 30px; padding: 4px 8px; }
+
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; box-shadow: var(--shadow); }
+table.items { width: 100%; border-collapse: collapse; min-width: 640px; }
+table.items th {
+  position: sticky; top: 0; z-index: 1; text-align: left; background: var(--surface-2);
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600;
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+}
+table.items td { padding: 0 12px; height: var(--row-h); border-bottom: 1px solid var(--border); vertical-align: middle; font-size: 13.5px; }
+table.items tbody tr { cursor: pointer; transition: background .08s; }
+table.items tbody tr:hover { background: var(--surface-2); }
+table.items tbody tr.open { background: var(--accent-soft); }
+table.items tbody tr.selected { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+table.items tr:last-child td { border-bottom: 0; }
+.c-check { width: 36px; text-align: center; }
+.c-fav { width: 36px; text-align: center; }
+.c-name { min-width: 220px; }
+.c-user, .c-url, .c-folder { color: var(--muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-date { color: var(--muted); white-space: nowrap; font-size: 12.5px; }
+.c-flags { white-space: nowrap; }
+.empty { text-align: center; color: var(--muted); padding: 32px !important; }
+.star { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 16px; padding: 4px; border-radius: 6px; }
+.star:hover { color: var(--warn); }
+.star.on { color: #d97706; }
+.name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.name > div { min-width: 0; }
+.name strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.glyph {
+  width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; border-radius: 8px;
+  background: var(--surface-3); color: var(--accent-strong); font-size: 14px;
+}
+.glyph.big { width: 36px; height: 36px; flex-basis: 36px; font-size: 17px; }
+
+.chip {
+  display: inline-block; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; margin-right: 4px;
+  background: var(--surface-3); color: var(--muted); font-weight: 500; white-space: nowrap;
+}
+.chip.error { background: var(--danger-soft); color: var(--danger); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.info { background: var(--info-soft); color: var(--info); }
+
+/* ---------- detail panel ---------- */
+.detail {
+  border-left: 1px solid var(--border); background: var(--surface);
+  position: sticky; top: 60px; height: calc(100vh - 60px); overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.detail[hidden] { display: none; }
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 18px 20px 12px; border-bottom: 1px solid var(--border); }
+.detail-title { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.detail-title strong { display: block; font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
+.fields { padding: 16px 20px; display: grid; gap: 14px; flex: 1; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: end; }
+.with-btn { display: flex; gap: 6px; align-items: center; margin-top: 5px; }
+.with-btn input { margin-top: 0; flex: 1; min-width: 0; }
+.with-btn .btn { flex: 0 0 auto; }
+.fav-check { padding-bottom: 6px; }
+.strength { height: 4px; border-radius: 4px; background: var(--surface-3); margin-top: 6px; overflow: hidden; }
+.strength span { display: block; height: 100%; width: 0; transition: width .2s, background .2s; }
+.strength.s1 span { width: 25%; background: var(--danger); }
+.strength.s2 span { width: 50%; background: var(--warn); }
+.strength.s3 span { width: 75%; background: #65a30d; }
+.strength.s4 span { width: 100%; background: var(--ok); }
+
+.flag-list { padding: 12px 20px 0; display: grid; gap: 8px; }
+.flag { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 13px; }
+.flag > div { display: grid; gap: 2px; }
+.flag span { color: var(--muted); font-size: 12.5px; }
+.flag.error { background: var(--danger-soft); }
+.flag.warn { background: var(--warn-soft); }
+.flag.info { background: var(--info-soft); }
+.flag.error strong { color: var(--danger); }
+.flag.warn strong { color: var(--warn); }
+.flag.info strong { color: var(--info); }
+
+.totp { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; align-items: center; padding: 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.totp.invalid { color: var(--danger); font-size: 13px; grid-template-columns: 1fr; }
+.totp-code { font: 600 22px/1 var(--mono); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.totp-bar { grid-column: 1 / -1; height: 3px; background: var(--surface-3); border-radius: 3px; overflow: hidden; }
+.totp-bar span { display: block; height: 100%; background: var(--accent); transition: width .9s linear; }
+.totp small { margin-left: 8px; }
+.suggest { background: var(--surface-2); border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: var(--radius-sm); padding: 12px; display: grid; gap: 8px; font-size: 13px; }
+.suggest-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.suggest-list.stacked { flex-direction: column; align-items: stretch; margin-bottom: 16px; }
+.suggest-list.stacked .btn { justify-content: space-between; height: auto; padding: 9px 12px; }
+.cf { display: grid; gap: 8px; }
+.cf-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.cf-row { display: grid; grid-template-columns: 1fr 1.4fr auto auto; gap: 6px; }
+.cf-row input { margin-top: 0; }
+.meta { color: var(--muted); font-size: 12px; margin: 0; }
+.detail-foot { display: flex; justify-content: space-between; padding: 14px 20px; border-top: 1px solid var(--border); background: var(--surface-2); position: sticky; bottom: 0; }
+
+/* ---------- toasts & modal ---------- */
+.toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: grid; gap: 8px; z-index: 60; width: min(92vw, 480px); }
+.toast { background: var(--text); color: var(--bg); padding: 11px 14px; border-radius: var(--radius-sm); box-shadow: var(--shadow); font-size: 13.5px; animation: rise .2s ease-out; }
+.toast.error { background: var(--danger); color: #fff; }
+@keyframes rise { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.modal {
+  border: 1px solid var(--border); border-radius: 14px; padding: 0; background: var(--surface); color: var(--text);
+  width: min(92vw, 480px); box-shadow: 0 24px 64px rgba(0, 0, 0, .3);
+}
+.modal.wide { width: min(94vw, 880px); }
+.modal::backdrop { background: rgba(8, 15, 25, .5); backdrop-filter: blur(2px); }
+.modal-inner { padding: 22px; }
+.stack { display: grid; gap: 14px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.warn-list { margin: 10px 0; padding-left: 18px; color: var(--warn); font-size: 13px; }
+.warning { color: var(--danger); font-size: 12.5px; background: var(--danger-soft); padding: 10px 12px; border-radius: var(--radius-sm); }
+.preview { font-size: 13px; padding-left: 18px; }
+.type-counts { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.export-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; }
+.formats { display: grid; gap: 6px; align-content: start; }
+.fmt { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; color: var(--text); }
+.fmt:hover { background: var(--surface-2); }
+.fmt:has(input:checked) { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.fmt input { margin-top: 4px; }
+.fmt > div { display: grid; gap: 2px; }
+.fmt strong { font-size: 13.5px; }
+.fmt small { font-size: 12px; }
+.export-side { display: grid; gap: 14px; align-content: start; }
+.export-side fieldset { display: grid; gap: 8px; }
+.summary { font-size: 13.5px; background: var(--surface-2); padding: 12px; border-radius: var(--radius-sm); }
+.summary p { margin-bottom: 6px; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1100px) {
+  .layout.has-detail { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
+  .detail { position: fixed; top: 60px; right: 0; bottom: 0; width: min(var(--detail-w), 100vw); height: auto; z-index: 20; box-shadow: var(--shadow); }
+  .layout:not(.has-detail) .main { grid-column: auto; }
+}
+@media (max-width: 860px) {
+  .mobile-only { display: inline-flex; }
+  .brand small, .top-actions .btn:not(.primary):not(.icon) { display: none; }
+  .brand { min-width: 0; }
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { position: fixed; top: 60px; left: 0; bottom: 0; width: 270px; height: auto; z-index: 25; transform: translateX(-102%); transition: transform .2s; }
+  body.sidebar-open .sidebar { transform: none; box-shadow: var(--shadow); }
+  .main { padding: 14px; }
+  .export-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">⬡</span>
+      <div><strong>Vault Convert</strong><small>Offline · nothing leaves this page</small></div>
+    </div>
+    <button class="btn ghost icon mobile-only" data-action="toggle-sidebar" aria-label="Toggle sidebar">☰</button>
+    <label class="search">
+      <span class="sr-only">Search</span>
+      <input id="search" type="search" placeholder="Search names, usernames, sites, notes  ( / )" autocomplete="off" />
+    </label>
+    <div class="top-actions">
+      <button class="btn" data-action="import">Import</button>
+      <button class="btn" data-action="new-item" title="New item (N)">+ New</button>
+      <button class="btn ghost" id="btn-undo" data-action="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button class="btn primary" data-action="export" title="Export (Ctrl+E)">Export</button>
+      <button class="btn ghost icon" data-action="prefs" aria-label="Preferences" title="Preferences">⚙</button>
+    </div>
+  </header>
+
+  <div class="layout" id="layout">
+    <aside class="sidebar" id="sidebar" hidden></aside>
+    <main class="main" id="main">
+      <section id="welcome" class="welcome"></section>
+      <section id="workspace" class="workspace" hidden>
+        <div id="banner"></div>
+        <div class="toolbar">
+          <div id="counts" class="counts"></div>
+          <div id="bulk" class="bulk" hidden></div>
+          <label class="sort">Sort
+            <select id="sort">
+              <option value="name">Name</option>
+              <option value="updated">Recently updated</option>
+              <option value="vault">Vault / folder</option>
+              <option value="username">Username</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table class="items">
+            <thead id="thead"></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <aside class="detail" id="detail" hidden></aside>
+  </div>
+
+  <dialog id="modal" class="modal"></dialog>
+  <input type="file" id="file-input" multiple hidden accept=".csv,.json,.xml,.1pux,.1pif,.zip,.txt" />
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</div>
+<script>(()=>{var P=["login","note","card","identity"],D={login:"Login",note:"Secure note",card:"Card",identity:"Identity"},me={login:"\u25CD",note:"\u270E",card:"\u25AD",identity:"\u25C9"},b="Personal";function j(){return globalThis.crypto?.randomUUID?crypto.randomUUID():"id-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,10)}function R(e={}){return{id:j(),type:"login",name:"",username:"",password:"",urls:[],totp:"",notes:"",vault:b,folder:"",favorite:!1,tags:[],customFields:[],createdAt:null,updatedAt:null,source:"manual",...e}}function B(e){if(e==null||e==="")return null;let t,n=String(e).trim();if(/^\d{9,13}$/.test(n)){let s=Number(n);t=new Date(s<1e11?s*1e3:s)}else t=new Date(n);return Number.isNaN(t.getTime())?null:t.toISOString()}function U(e){let t=String(e||"").trim();if(!t)return"";/^[a-z][a-z0-9+.-]*:\/\//i.test(t)||(t="https://"+t);try{return new URL(t).hostname.replace(/^(www|m)\./i,"").toLowerCase()}catch{return""}}function oe(e){return(Array.isArray(e)?e.join(`
+`):String(e||"")).split(/[\n\r;]+/).map(n=>n.trim()).filter(Boolean)}var J=e=>[...new Set(e.filter(t=>t!=null&&t!==""))],v=e=>e.vault||b;function N(e){return[v(e),e.folder].filter(Boolean).join(" / ")}function f(e){return e.name||U(e.urls[0])||e.username||"Untitled"}function Ue(e){let t=e.split(/\r?\n/).find(a=>a.trim())||"",n={",":0,";":0,"	":0},s=!1;for(let a of t)a==='"'?s=!s:!s&&a in n&&n[a]++;return Object.keys(n).reduce((a,r)=>n[r]>n[a]?r:a,",")}function Le(e,t=","){e.charCodeAt(0)===65279&&(e=e.slice(1));let n=[],s=[],a="",r=!1,o=0;for(;o<e.length;){let l=e[o];if(r){if(l==='"'){if(e[o+1]==='"'){a+='"',o+=2;continue}r=!1,o++;continue}a+=l,o++;continue}l==='"'?(r=!0,o++):l===t?(s.push(a),a="",o++):l==="\r"?o++:l===`
+`?(s.push(a),n.push(s),s=[],a="",o++):(a+=l,o++)}return(a!==""||s.length)&&(s.push(a),n.push(s)),n.filter(l=>!(l.length===1&&l[0]===""))}function lt(e){let t=e==null?"":String(e);return/[",\r\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t}function O(e){return e.map(t=>t.map(lt).join(",")).join(`\r
+`)+`\r
+`}var dt=(()=>{let e=new Uint32Array(256);for(let t=0;t<256;t++){let n=t;for(let s=0;s<8;s++)n=n&1?3988292384^n>>>1:n>>>1;e[t]=n>>>0}return e})();function ct(e){let t=4294967295;for(let n=0;n<e.length;n++)t=dt[(t^e[n])&255]^t>>>8;return(t^4294967295)>>>0}async function ut(e){if(typeof DecompressionStream>"u")throw new Error("This browser cannot read compressed ZIP entries.");let t=new Blob([e]).stream().pipeThrough(new DecompressionStream("deflate-raw"));return new Uint8Array(await new Response(t).arrayBuffer())}async function Ie(e){let t=new DataView(e.buffer,e.byteOffset,e.byteLength),n=-1;for(let l=e.length-22;l>=Math.max(0,e.length-22-65557);l--)if(t.getUint32(l,!0)===101010256){n=l;break}if(n<0)throw new Error("Not a ZIP archive.");let s=t.getUint16(n+10,!0),a=t.getUint32(n+16,!0),r=new Map,o=new TextDecoder;for(let l=0;l<s;l++){if(t.getUint32(a,!0)!==33639248)throw new Error("Damaged ZIP central directory.");let d=t.getUint16(a+10,!0),p=t.getUint32(a+20,!0),u=t.getUint16(a+28,!0),c=t.getUint16(a+30,!0),$=t.getUint16(a+32,!0),h=t.getUint32(a+42,!0),y=o.decode(e.subarray(a+46,a+46+u));a+=46+u+c+$;let I=h+30+t.getUint16(h+26,!0)+t.getUint16(h+28,!0),V=e.subarray(I,I+p);if(d===0)r.set(y,V.slice());else if(d===8)r.set(y,await ut(V));else throw new Error(`Unsupported ZIP compression method ${d} in ${y}.`)}return r}function Te(e){let t=new TextEncoder,n=33,s=[],a=[],r=0;for(let{name:h,data:y}of e){let I=t.encode(h),V=ct(y),M=new Uint8Array(30+I.length),T=new DataView(M.buffer);T.setUint32(0,67324752,!0),T.setUint16(4,20,!0),T.setUint16(6,2048,!0),T.setUint16(8,0,!0),T.setUint16(12,n,!0),T.setUint32(14,V,!0),T.setUint32(18,y.length,!0),T.setUint32(22,y.length,!0),T.setUint16(26,I.length,!0),M.set(I,30),s.push(M,y);let K=new Uint8Array(46+I.length),w=new DataView(K.buffer);w.setUint32(0,33639248,!0),w.setUint16(4,20,!0),w.setUint16(6,20,!0),w.setUint16(8,2048,!0),w.setUint16(10,0,!0),w.setUint16(14,n,!0),w.setUint32(16,V,!0),w.setUint32(20,y.length,!0),w.setUint32(24,y.length,!0),w.setUint16(28,I.length,!0),w.setUint32(42,r,!0),K.set(I,46),a.push(K),r+=M.length+y.length}let o=a.reduce((h,y)=>h+y.length,0),l=new Uint8Array(22),d=new DataView(l.buffer);d.setUint32(0,101010256,!0),d.setUint16(8,e.length,!0),d.setUint16(10,e.length,!0),d.setUint32(12,o,!0),d.setUint32(16,r,!0);let p=[...s,...a,l],u=p.reduce((h,y)=>h+y.length,0),c=new Uint8Array(u),$=0;for(let h of p)c.set(h,$),$+=h.length;return c}var pt={1:"login",2:"note",3:"card",4:"identity"},mt={"001":"login","005":"login","002":"card","003":"note","004":"identity"},C={name:["name","title","itemname","entryname","itemtitle","label","entry","accountname","displayname"],url:["url","uri","uris","urls","website","webaddress","web","link","loginuri","loginuris","origin","formactionorigin","location"],username:["username","loginusername","user","loginname","email","userid","useremail","usernameemail","accountusername"],password:["password","loginpassword","pass","pwd","passwordvalue","secret"],totp:["totp","otp","otpauth","loginotp","logintotp","onetimepassword","totpsecret","totpuri","twofactor","authenticator"],notes:["notes","note","notesplain","extra","comments","comment","memo","description","loginnotes","secretnotes"],folder:["folder","foldername","folders","folderpath","grouping","group","groupname","groups"],vault:["vault","vaultname","collection","collections","space","library"],favorite:["favorite","favourite","favorites","favourites","fav","starred","isfavorite"],type:["type","itemtype","kind","category","templatetype","typename"],created:["created","createdat","createtime","timecreated","dateadded","datecreated","creationtime","creationdate"],updated:["updated","updatedat","lastmodified","modifiedat","timemodified","timelastmodified","revisiondate","lastmodifieddate","updatetime","lastmodificationtime"],tags:["tags","tag","labels"]},Oe=/pin|secret|cvv|cvc|code|number|passport|security|password/i,Pe=e=>String(e||"").toLowerCase().replace(/[^a-z0-9]/g,""),ft=e=>e.replace(/([a-z])([A-Z])/g,"$1 $2").replace(/[_.]+/g," ").replace(/^./,t=>t.toUpperCase());async function je(e,t){let n;if(t[0]===80&&t[1]===75){let a=await Ie(t);if(!a.has("export.data"))throw new Error("ZIP archive without a recognised export inside.");n=Fe(JSON.parse(De(a.get("export.data"))),[])}else{let a=De(t).replace(/^﻿/,""),r=a.trimStart();r.startsWith("<")?n=yt(a,[]):r.startsWith("{")||r.startsWith("[")?n=ht(a,[]):r.startsWith("***")?n=wt(a,[]):n=$t(a,[])}let s=n.items.map(a=>({...a,source:n.format}));return{...n,items:s,fileName:e,count:s.length}}function De(e){return e[0]===255&&e[1]===254?new TextDecoder("utf-16le").decode(e.subarray(2)):e[0]===254&&e[1]===255?new TextDecoder("utf-16be").decode(e.subarray(2)):new TextDecoder("utf-8").decode(e)}function ht(e,t){let n;try{n=JSON.parse(e)}catch(a){throw new Error(`Invalid JSON: ${a.message}`)}if(Array.isArray(n))return n.some(a=>a&&Array.isArray(a.fields))?Ne({items:n},t):G(n.filter(a=>a&&typeof a=="object").map(a=>Q(a)),"Generic JSON",t);if(!n||typeof n!="object")throw new Error("Unrecognised JSON structure.");if(n.encrypted===!0)throw new Error("This Bitwarden export is encrypted. Export it again as unencrypted JSON.");if(n.accounts)return Fe(n,t);if(Array.isArray(n.items))return"encrypted"in n||n.items.some(a=>typeof a.type=="number")?gt(n,t):n.items.some(a=>Array.isArray(a.fields))?Ne(n,t):G(n.items.map(a=>Q(a)),"JSON export",t);let s=[];for(let[a,r]of Object.entries(n))if(Array.isArray(r))for(let o of r)o&&typeof o=="object"&&s.push(Q({section:a,...o}));if(s.length)return G(s,"JSON export (sectioned)",t);throw new Error("Unrecognised JSON structure.")}function gt(e,t){let n=new Map((e.folders||[]).map(a=>[a.id,a.name||""]));return{format:"Bitwarden JSON",items:(e.items||[]).map(a=>{let r=a.login||{},o=R({type:pt[a.type]||"login",name:a.name||"",notes:a.notes||"",folder:n.get(a.folderId)||"",favorite:!!a.favorite,urls:(r.uris||[]).map(l=>l.uri).filter(Boolean),username:r.username||"",password:r.password||"",totp:r.totp||"",customFields:(a.fields||[]).map(l=>({name:l.name||"",value:l.value||"",hidden:l.type===1})),createdAt:B(a.creationDate),updatedAt:B(a.revisionDate)});return a.card&&o.customFields.push(...Ee(a.card)),a.identity&&o.customFields.push(...Ee(a.identity)),o.name||(o.name=U(o.urls[0])||o.username||"Untitled"),o}),warnings:t}}function Ee(e){return Object.entries(e||{}).filter(([,t])=>t!=null&&String(t)!=="").map(([t,n])=>({name:ft(t),value:String(n),hidden:Oe.test(t)}))}function Ne(e,t){let n=e.items.map(s=>{let a={title:s.title||s.subtitle||"",category:s.category||"",note:s.note||s.notes||"",folder:Array.isArray(s.folders)?s.folders.join(" / "):s.folder||""};for(let r of s.fields||[]){if(r.value===void 0||r.value===null||r.value==="")continue;let o=String(r.type||"").toLowerCase(),l={username:"username",email:"username",password:"password",website:"url",url:"url",totp:"totp",otp:"totp"}[o]||r.label||o||"field";l==="url"?a.url=a.url?`${a.url}
+${r.value}`:String(r.value):a[l]===void 0?a[l]=String(r.value):a[`${l} ${Object.keys(a).length}`]=String(r.value)}return a});return G(n,"Enpass JSON",t)}function Fe(e,t){let n=[];for(let s of e.accounts||[])for(let a of s.vaults||[]){let r=a.attrs?.name||b;for(let o of a.items||[]){let l=o.overview||{},d=o.details||{},p=R({type:mt[o.categoryUuid]||"login",name:l.title||"",vault:r,favorite:Number(o.favIndex)>0,urls:vt([l.url,...(l.urls||[]).map(u=>u.url)]),notes:d.notesPlain||"",tags:l.tags||[],createdAt:B(o.createdAt),updatedAt:B(o.updatedAt),password:d.password||""});for(let u of d.loginFields||[])u.designation==="username"?p.username=u.value||"":u.designation==="password"&&(p.password=u.value||"");for(let u of d.sections||[])for(let c of u.fields||[]){let[$,h]=Object.entries(c.value||{})[0]||[];if(!(h==null||h===""))if($==="totp")p.totp=String(h);else{let y=[u.title,c.title].filter(Boolean).join(" \xB7 ")||"Field";p.customFields.push({name:y,value:typeof h=="object"?JSON.stringify(h):String(h),hidden:$==="concealed"})}}p.name||(p.name=U(p.urls[0])||p.username||"Untitled"),n.push(p)}}return{format:"1Password (1PUX)",items:n,warnings:t}}function vt(e){return[...new Set(e.filter(Boolean))]}function Q(e,t="",n={}){for(let[s,a]of Object.entries(e)){let r=t?`${t}.${s}`:s;a!=null&&(Array.isArray(a)?a.every(o=>o===null||typeof o!="object")?n[r]=a.filter(o=>o!==null&&o!=="").join(`
+`):a.forEach((o,l)=>{o&&typeof o=="object"&&Q(o,`${r}${l}`,n)}):typeof a=="object"?Q(a,r,n):n[r]=String(a))}return n}function wt(e,t){let n=e.split(/^\*\*\*[0-9a-f-]+\*\*\*\s*$/im).map(r=>r.trim()).filter(Boolean),s=[],a=0;for(let r of n){let o;try{o=JSON.parse(r)}catch{a++;continue}let l=o.secureContents||{},d={title:o.title||"",type:o.typeName||"",url:[o.location,...(l.URLs||[]).map(p=>p.url)].filter(Boolean).join(`
+`),notes:l.notesPlain||"",favorite:o.faveIndex?"1":""};for(let p of l.fields||[])p.value===void 0||p.value===""||(p.designation==="username"?d.username=String(p.value):p.designation==="password"?d.password=String(p.value):d[p.title||p.name||"field"]=String(p.value));s.push(d)}return a&&t.push(`${a} record(s) could not be read.`),G(s,"1Password (1PIF)",t)}function yt(e,t){if(typeof DOMParser>"u")throw new Error("XML import needs a browser.");let n=new DOMParser().parseFromString(e,"application/xml");if(n.querySelector("parsererror"))throw new Error("Invalid KeePass XML.");let s=n.querySelector("KeePassFile > Root > Group");if(!s)throw new Error("KeePass XML without a Root group.");let a=[],r=(d,p)=>[...d.children].find(u=>u.tagName===p)||{children:[]},o=(d,p)=>[...d.children].find(u=>u.tagName===p)?.textContent??"",l=(d,p)=>{for(let u of[...d.children])if(u.tagName==="Group")l(u,[...p,o(u,"Name")]);else if(u.tagName==="Entry"){let c={vault:p[0]||"",folder:p.slice(1).join(" / "),created:o(r(u,"Times"),"CreationTime"),lastmodificationtime:o(r(u,"Times"),"LastModificationTime")};for(let $ of u.children){if($.tagName!=="String")continue;let h=o($,"Key"),y=o($,"Value");h&&(c[h]=y)}a.push(c)}};return l(s,[]),G(a,"KeePass XML",t)}var bt=[["Bitwarden CSV",e=>e.includes("loginuri")||e.includes("loginpassword")],["LastPass CSV",e=>e.includes("grouping")&&e.includes("extra")],["KeePassXC CSV",e=>e[0]==="group"&&e.includes("totp")],["Proton Pass CSV",e=>e.includes("email")&&e.includes("vault")&&e.includes("type")],["Apple Passwords CSV",e=>e.includes("otpauth")&&e.includes("title")],["Firefox CSV",e=>e.includes("httprealm")||e.includes("formactionorigin")],["Dashlane CSV",e=>e.includes("username2")||e.includes("username3")],["1Password CSV",e=>e.includes("title")&&e.includes("website")&&e.includes("vault")],["Chrome / Google / Edge CSV",e=>e.length<=6&&e.includes("name")&&e.includes("url")&&e.includes("password")]];function $t(e,t){let n=Le(e,Ue(e));if(n.length<2)throw new Error("No data rows found. Is this a CSV export?");let s=new Map,a=n[0].map(d=>{let p=d.trim()||"column",u=(s.get(p)||0)+1;return s.set(p,u),u>1?`${p} ${u}`:p}),r=a.map(Pe),o=(bt.find(([,d])=>d(r))||[null])[0]||"Generic CSV",l=n.slice(1).map(d=>Object.fromEntries(a.map((p,u)=>[p,d[u]??""])));return G(l,o,t)}function G(e,t,n){let s=[],a=0;for(let r of e){if(!Object.values(r).some(o=>String(o).trim())){a++;continue}s.push(St(r))}return a&&n.push(`${a} empty row(s) skipped.`),{format:t,items:s,warnings:n}}function St(e){let t=Object.keys(e),n=new Set,s=w=>{let pe="";for(let it of w)for(let ae of t)Pe(ae)===it&&(n.add(ae),!pe&&String(e[ae]).trim()!==""&&(pe=String(e[ae])));return pe},a=s(C.name),r=oe(s(C.url)),o=s(C.username).trim(),l=s(C.password),d=s(C.totp).trim(),p=s(C.notes),u=s(C.folder).trim(),c=s(C.vault).trim(),$=s(C.favorite),h=s(C.type),y=s(C.created),I=s(C.updated),V=s(C.tags),M=xt(h);!h&&!o&&!l&&!r.length&&!d&&(M="note");let T=t.filter(w=>!n.has(w)&&String(e[w]).trim()!=="").map(w=>({name:w,value:String(e[w]),hidden:Oe.test(w)})),K=R({type:M,urls:r,username:o,password:l,totp:d,notes:p,folder:u,vault:c||b,favorite:/^(1|true|yes|y|x|on)$/i.test($.trim()),tags:V.split(/[,;]/).map(w=>w.trim()).filter(Boolean),customFields:T,createdAt:B(y),updatedAt:B(I)});return K.name=a.trim()||U(r[0])||o||"Untitled",K}function xt(e){let t=String(e||"").toLowerCase();return/card|credit|debit|payment/.test(t)?"card":/identity|passport|driver|licen[cs]e/.test(t)?"identity":/note|memo/.test(t)?"note":"login"}var kt="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",Ct={SHA1:"SHA-1",SHA256:"SHA-256",SHA512:"SHA-512"},fe=e=>String(e||"").toUpperCase().replace(/[\s\-=]/g,"");function z(e){let t=String(e||"").trim();if(!t)return null;if(/^otpauth:\/\//i.test(t))try{let n=new URL(t),s=n.searchParams;return{secret:fe(s.get("secret")),digits:Number(s.get("digits"))||6,period:Number(s.get("period"))||30,algorithm:(s.get("algorithm")||"SHA1").toUpperCase(),issuer:s.get("issuer")||"",label:decodeURIComponent(n.pathname.replace(/^\/+/,"")),uri:t}}catch{return{secret:"",digits:6,period:30,algorithm:"SHA1",issuer:"",label:"",uri:t}}return{secret:fe(t),digits:6,period:30,algorithm:"SHA1",issuer:"",label:"",uri:""}}function _(e){let t=z(e);return!!t&&t.secret.length>=8&&/^[A-Z2-7]+$/.test(t.secret)}function At(e){let t=fe(e),n=0,s=0,a=[];for(let r of t){let o=kt.indexOf(r);if(o<0)throw new Error("Invalid base32 character");s=(s<<5|o)&16777215,n+=5,n>=8&&(a.push(s>>>n-8&255),n-=8)}return new Uint8Array(a)}async function he(e,t=Date.now()){let n=z(e);if(!n||!_(e))return null;let s=Math.floor(t/1e3/n.period),a=new Uint8Array(8),r=new DataView(a.buffer);r.setUint32(0,Math.floor(s/4294967296)),r.setUint32(4,s>>>0);let o=await crypto.subtle.importKey("raw",At(n.secret),{name:"HMAC",hash:Ct[n.algorithm]||"SHA-1"},!1,["sign"]),l=new Uint8Array(await crypto.subtle.sign("HMAC",o,a)),d=l[l.length-1]&15,p=((l[d]&127)<<24|l[d+1]<<16|l[d+2]<<8|l[d+3])>>>0;return String(p%10**n.digits).padStart(n.digits,"0")}function Ve(e=30,t=Date.now()){return e-Math.floor(t/1e3)%e}function re(e,t="",n=""){let s=z(e);if(!s||!_(e))return String(e||"");if(s.uri)return s.uri;let a=new URLSearchParams({secret:s.secret,algorithm:s.algorithm,digits:String(s.digits),period:String(s.period)});return n&&a.set("issuer",n),`otpauth://totp/${encodeURIComponent(t||n||"account")}?${a.toString()}`}function Me(e){let t=z(e);return t?t.issuer||t.label:""}var Re=e=>String(e||"").toLowerCase().replace(/[^a-z0-9]/g,""),ve=[{id:"vault-json",label:"Vault Convert JSON",ext:"json",types:P,desc:"Full-fidelity backup. Re-import it here to keep editing."},{id:"generic-csv",label:"Generic CSV",ext:"csv",types:P,desc:"Every item type. Custom fields go into a Fields column."},{id:"bitwarden-json",label:"Bitwarden JSON (unencrypted)",ext:"json",types:P,desc:"Bitwarden items with folders. Keep the file private."},{id:"bitwarden-csv",label:"Bitwarden CSV",ext:"csv",types:P,desc:"Cards and identities become secure notes."},{id:"1password-1pux",label:"1Password (1PUX)",ext:"1pux",types:P,desc:"Zip container with JSON, vaults kept as separate vaults."},{id:"keepass-xml",label:"KeePass 2 XML",ext:"xml",types:P,desc:"Plain XML. Groups map to vaults and folders."},{id:"keepassxc-csv",label:"KeePassXC CSV",ext:"csv",types:P,desc:"Group column holds vault / folder."},{id:"proton-csv",label:"Proton Pass CSV",ext:"csv",types:["login","note"],desc:"Logins and notes only."},{id:"lastpass-csv",label:"LastPass CSV",ext:"csv",types:["login","note"],desc:"Logins and notes only."},{id:"dashlane-csv",label:"Dashlane CSV",ext:"csv",types:["login","note"],desc:"Logins and notes only."},{id:"apple-csv",label:"Apple Passwords CSV",ext:"csv",types:["login"],desc:"Logins only, with one-time codes."},{id:"chrome-csv",label:"Chrome / Google / Edge CSV",ext:"csv",types:["login"],desc:"Logins only. No one-time codes."}],Ut={login:1,note:2,card:3,identity:4},Lt={login:"001",card:"002",note:"003",identity:"004"},Be={cardholdername:"cardholderName",number:"number",brand:"brand",expmonth:"expMonth",expyear:"expYear",code:"code"},Je=e=>e&&Math.floor(Date.parse(e)/1e3)||0,Ge=e=>e.customFields.map(t=>`${t.name}: ${t.value}`).join(`
+`),H=e=>[e.notes,Ge(e)].filter(Boolean).join(`
+
+`),F=e=>e.urls[0]||"",He=e=>e.folder?N(e):v(e)===b?"":v(e),ge=()=>{let e=crypto.getRandomValues(new Uint8Array(16));return btoa(String.fromCharCode(...e))};function we(e,t){let n=ve.find(c=>c.id===e);if(!n)throw new Error(`Unknown format ${e}`);let s=t.filter(c=>n.types.includes(c.type)),a={};for(let c of t)n.types.includes(c.type)||(a[c.type]=(a[c.type]||0)+1);let r=[],o=s.filter(c=>c.customFields.length).length,l=s.filter(c=>c.totp).length,d=new Date().toISOString().slice(0,10),u={filename:`${`vault-export-${e}-${d}`}.${n.ext}`,exported:s.length,excluded:a,notes:r};switch(e){case"vault-json":u.content=JSON.stringify({format:"vault-convert",version:1,exportedAt:new Date().toISOString(),items:s},null,2),u.mime="application/json";break;case"generic-csv":u.content=O([["Type","Name","URL","Username","Password","TOTP","Notes","Vault","Folder","Favorite","Tags","Fields"],...s.map(c=>[c.type,f(c),c.urls.join(`
+`),c.username,c.password,c.totp,c.notes,v(c),c.folder,c.favorite?"yes":"",c.tags.join(", "),Ge(c)])]),u.mime="text/csv";break;case"bitwarden-json":u.content=JSON.stringify(It(s),null,2),u.mime="application/json",o&&r.push("Custom fields are kept as Bitwarden fields.");break;case"bitwarden-csv":u.content=O([["folder","favorite","type","name","notes","fields","reprompt","login_uri","login_username","login_password","login_totp"],...s.map(c=>{let $=c.type==="card"||c.type==="identity",h=c.type==="login";return[He(c),c.favorite?1:0,h?"login":"note",f(c),$?H(c):c.notes,"",0,h?c.urls.join(","):"",h?c.username:"",h?c.password:"",h?c.totp:""]})]),u.mime="text/csv",s.some(c=>c.type==="card"||c.type==="identity")&&r.push("Cards and identities were written as secure notes.");break;case"1password-1pux":u.content=Te([{name:"export.data",data:new TextEncoder().encode(JSON.stringify(Tt(s)))},{name:"manifest.json",data:new TextEncoder().encode(JSON.stringify({version:3,description:"Exported by Vault Convert"}))}]),u.mime="application/zip",r.push("Test the import in 1Password with a few items first. This writer follows the 1PUX layout.");break;case"keepass-xml":u.content=Dt(s),u.mime="application/xml";break;case"keepassxc-csv":u.content=O([["Group","Title","Username","Password","URL","Notes","TOTP","Icon","Last Modified","Created"],...s.map(c=>[N(c),f(c),c.username,c.password,F(c),H(c),c.totp?re(c.totp,f(c)):"","0",c.updatedAt||"",c.createdAt||""])]),u.mime="text/csv";break;case"proton-csv":u.content=O([["type","name","url","email","username","password","note","totp","vault"],...s.map(c=>[c.type==="note"?"note":"login",f(c),F(c),c.username.includes("@")?c.username:"",c.username,c.password,H(c),c.totp,v(c)])]),u.mime="text/csv";break;case"lastpass-csv":u.content=O([["url","username","password","totp","extra","name","grouping","fav"],...s.map(c=>[c.type==="note"?"http://sn":F(c),c.username,c.password,c.totp,H(c),f(c),N(c),c.favorite?1:0])]),u.mime="text/csv";break;case"dashlane-csv":u.content=O([["title","url","username","password","note","totp","category"],...s.map(c=>[f(c),F(c),c.username,c.password,H(c),c.totp,c.folder])]),u.mime="text/csv";break;case"apple-csv":u.content=O([["Title","URL","Username","Password","Notes","OTPAuth"],...s.map(c=>[f(c),F(c),c.username,c.password,H(c),c.totp?re(c.totp,f(c)):""])]),u.mime="text/csv";break;case"chrome-csv":u.content=O([["name","url","username","password","note"],...s.map(c=>[f(c),F(c),c.username,c.password,H(c)])]),u.mime="text/csv",l&&r.push(`${l} one-time code(s) were dropped because this format has no field for them.`);break;default:throw new Error(`No exporter for ${e}`)}return o&&["proton-csv","lastpass-csv","dashlane-csv","apple-csv","chrome-csv"].includes(e)&&r.push("Custom fields were merged into the notes column."),Object.keys(a).length&&r.push("Some item types are not supported by this format and were left out."),u}function It(e){let t=new Map,n=[],s=r=>{if(!r)return null;if(!t.has(r)){let o=j();t.set(r,o),n.push({id:o,name:r})}return t.get(r)},a=e.map(r=>{let o={id:j(),organizationId:null,folderId:s(He(r)),type:Ut[r.type],reprompt:0,name:f(r),notes:r.notes,favorite:!!r.favorite,fields:r.customFields.map(l=>({name:l.name,value:l.value,type:l.hidden?1:0})),collectionIds:null};if(r.type==="login")o.login={uris:r.urls.map(l=>({match:null,uri:l})),username:r.username,password:r.password,totp:r.totp};else if(r.type==="card"){let l={};for(let d of r.customFields){let p=Be[Re(d.name)];p&&(l[p]=d.value)}o.card={cardholderName:"",number:"",brand:"",expMonth:"",expYear:"",code:"",...l},o.fields=r.customFields.filter(d=>!Be[Re(d.name)]).map(d=>({name:d.name,value:d.value,type:d.hidden?1:0}))}else r.type==="identity"?o.identity={}:o.secureNote={type:0};return o});return{encrypted:!1,folders:n,items:a}}function Tt(e){let t=new Map;for(let n of e){let s=v(n);t.has(s)||t.set(s,[]);let a=[],r=[];n.totp&&r.push({name:"totp",title:"One-time password",fields:[{title:"one-time password",id:"totp",value:{totp:n.totp}}]}),n.customFields.length&&r.push({name:"custom",title:"Custom fields",fields:n.customFields.map((l,d)=>({title:l.name,id:`cf${d}`,value:l.hidden?{concealed:l.value}:{string:l.value}}))}),n.type==="login"&&(a.push({value:n.username,id:"username",name:"username",designation:"username",fieldType:"T"}),a.push({value:n.password,id:"password",name:"password",designation:"password",fieldType:"P"})),t.get(s).push({uuid:j(),favIndex:n.favorite?1:0,categoryUuid:Lt[n.type],details:{loginFields:a,notesPlain:n.notes,sections:r},overview:{title:f(n),url:F(n),urls:n.urls.map((l,d)=>({label:d===0?"website":`website ${d+1}`,url:l})),tags:n.tags,ps:0},createdAt:Je(n.createdAt),updatedAt:Je(n.updatedAt),state:"active"})}return{accounts:[{attrs:{accountName:"Vault Convert",name:"Vault Convert",email:"",uuid:j(),domain:"",avatar:"",userUUID:j()},vaults:[...t.entries()].map(([n,s])=>({attrs:{name:n,uuid:j(),desc:"",avatar:"",type:"U"},items:s}))}]}}var X=e=>String(e??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[t]);function Dt(e){let t=new Date().toISOString(),n=new Map;for(let o of e){let l=v(o);n.has(l)||n.set(l,new Map);let d=n.get(l),p=o.folder||"";d.has(p)||d.set(p,[]),d.get(p).push(o)}let s=o=>{let l=(p,u,c=!1)=>`<String><Key>${X(p)}</Key><Value${c?' Protected="True"':""}>${X(u)}</Value></String>`,d=[l("Title",f(o)),l("UserName",o.username),l("Password",o.password,!0),l("URL",F(o)),l("Notes",o.notes)];o.totp&&d.push(l("otp",re(o.totp,f(o)),!0));for(let p of o.customFields)d.push(l(p.name,p.value,p.hidden));return`    <Entry>
+      <UUID>${ge()}</UUID>
+      <IconID>0</IconID>
+      <Tags>${X(o.tags.join(";"))}</Tags>
+      <Times>
+        <CreationTime>${X(o.createdAt||t)}</CreationTime>
+        <LastModificationTime>${X(o.updatedAt||t)}</LastModificationTime>
+      </Times>
+      ${d.join(`
+      `)}
+    </Entry>`},a=(o,l,d="")=>`  <Group>
+    <UUID>${ge()}</UUID>
+    <Name>${X(o)}</Name>
+    <IconID>48</IconID>
+${d}${l.map(s).join(`
+`)}
+  </Group>`,r=[...n.entries()].map(([o,l])=>{let d=[...l.entries()].filter(([u])=>u).map(([u,c])=>a(u,c)).join(`
+`),p=l.get("")||[];return a(o,p,d?`${d}
+`:"")});return`<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<KeePassFile>
+  <Meta>
+    <Generator>Vault Convert</Generator>
+  </Meta>
+  <Root>
+    <Group>
+      <UUID>${ge()}</UUID>
+      <Name>Vault Convert export</Name>
+      <IconID>48</IconID>
+${r.join(`
+`)}
+    </Group>
+  </Root>
+</KeePassFile>
+`}var Et={"no-password":"No password","no-username":"No username","no-url":"No website",weak:"Weak password",reused:"Reused password","bad-totp":"Invalid authenticator secret","totp-only":"Authenticator only",duplicate:"Duplicate",conflict:"Conflicting logins",empty:"Empty item"},Nt={"no-password":"Add a password, or generate one.","no-username":"Add the username or email used to sign in.","no-url":"Add the website so the login can be matched.",weak:"Under 10 characters or only one kind of character.",reused:"The same password is used by other items.","bad-totp":"The one-time code secret is not valid base32. Re-copy it from the site.","totp-only":"This is an authenticator with no login. Link it to a login.",duplicate:"Same site, username and password as another item.",conflict:"Same site and username but a different password.",empty:"Nothing is filled in."};function ie(e){let t=U(e.urls[0]);return e.type==="login"?["login",t||e.name.toLowerCase(),e.username.trim().toLowerCase(),e.password].join(""):[e.type,e.name.trim().toLowerCase(),e.notes.trim()].join("")}function Ot(e){let t=new Map,n=new Map;for(let r of e){if(r.type==="login"){let l=U(r.urls[0]);if(!l&&!r.username&&!r.password)continue;let d=[l||r.name.toLowerCase(),r.username.trim().toLowerCase()].join("");n.has(d)||n.set(d,[]),n.get(d).push(r)}let o=ie(r);t.has(o)||t.set(o,[]),t.get(o).push(r)}let s=[...t.values()].filter(r=>r.length>1&&(r[0].type!=="login"||r[0].password||r[0].username)),a=[...n.values()].filter(r=>r.length>1&&new Set(r.map(o=>o.password)).size>1);return{exact:s.map(r=>r.map(o=>o.id)),conflicts:a.map(r=>r.map(o=>o.id))}}function ye(e){if(!e)return 0;let t=0;e.length>=10&&t++,e.length>=16&&t++;let n=[/[a-z]/,/[A-Z]/,/\d/,/[^A-Za-z0-9]/].filter(s=>s.test(e)).length;return n>=3&&t++,n===4&&e.length>=14&&t++,Math.min(t,4)}function Pt(e,t){let n=[],s=(o,l)=>n.push({code:o,level:l,label:Et[o],hint:Nt[o]}),a=e.urls.length>0;return e.type==="login"&&(e.totp&&!e.password&&!e.username&&!a?s("totp-only","info"):!e.password&&!e.totp&&s("no-password","warn"),e.password&&!e.username&&s("no-username","info"),!a&&(e.password||e.username)&&s("no-url","info"),e.password&&ye(e.password)<2&&s("weak","warn"),e.password&&(t.pwCount.get(e.password)||0)>1&&s("reused","warn")),e.totp&&!_(e.totp)&&s("bad-totp","error"),t.dupeIds.has(e.id)&&s("duplicate","warn"),t.conflictIds.has(e.id)&&s("conflict","warn"),e.username||e.password||e.totp||e.notes||a||e.customFields.length||s("empty","info"),n}function Y(e){let t=new Map;for(let d of e)d.password&&t.set(d.password,(t.get(d.password)||0)+1);let n=Ot(e),s=new Set(n.exact.flat()),a=new Set(n.conflicts.flat()),r={pwCount:t,dupeIds:s,conflictIds:a},o=new Map,l=new Set;for(let d of e){let p=Pt(d,r);o.set(d.id,p),p.some(u=>u.code==="totp-only")&&l.add(d.id)}return{flags:o,dupes:n,dupeIds:s,conflictIds:a,totpOnly:l,pwCount:t}}function qe(e){let t=structuredClone(e[0]),n=s=>s.source&&s.source!=="manual"?s.source:v(s);for(let s of e.slice(1)){t.urls=J([...t.urls,...s.urls]),!t.username&&s.username?t.username=s.username:s.username&&s.username!==t.username&&t.customFields.push({name:`Alternate username (${n(s)})`,value:s.username,hidden:!1}),!t.password&&s.password?t.password=s.password:s.password&&s.password!==t.password&&t.customFields.push({name:`Alternate password (${n(s)})`,value:s.password,hidden:!0}),!t.totp&&s.totp?t.totp=s.totp:s.totp&&s.totp!==t.totp&&t.customFields.push({name:`Alternate one-time code (${n(s)})`,value:s.totp,hidden:!0}),s.notes&&!t.notes.includes(s.notes)&&(t.notes=[t.notes,s.notes].filter(Boolean).join(`
+
+`));for(let a of s.customFields)t.customFields.some(r=>r.name===a.name&&r.value===a.value)||t.customFields.push({...a});t.tags=J([...t.tags,...s.tags]),t.favorite=t.favorite||s.favorite,(!t.createdAt||s.createdAt&&s.createdAt<t.createdAt)&&(t.createdAt=s.createdAt||t.createdAt),(!t.updatedAt||s.updatedAt&&s.updatedAt>t.updatedAt)&&(t.updatedAt=s.updatedAt||t.updatedAt)}return t}function Ke(e){return e.reduce((t,n)=>(n.updatedAt||n.createdAt||"")>(t.updatedAt||t.createdAt||"")?n:t,e[0]).id}function ze(e,t){let n=structuredClone(e);return n.totp?n.totp!==t.totp&&n.customFields.push({name:"Alternate one-time code",value:t.totp,hidden:!0}):n.totp=t.totp,!n.urls.length&&t.urls.length&&(n.urls=[...t.urls]),n.updatedAt=new Date().toISOString(),n}function be(e,t){let n=Me(e.totp).toLowerCase(),s=U(e.urls[0]),a=(e.name||"").toLowerCase();return t.filter(r=>r.type==="login"&&r.id!==e.id&&!r.totp).map(r=>{let o=0,l=U(r.urls[0]),d=f(r).toLowerCase();return s&&l&&s===l&&(o+=5),n&&(d.includes(n)||l&&l.includes(n))&&(o+=3),a&&(d===a||d.includes(a)||a.includes(d))&&(o+=2),{item:r,score:o}}).sort((r,o)=>o.score-r.score||f(r.item).localeCompare(f(o.item)))}function _e({length:e=20,lower:t=!0,upper:n=!0,digits:s=!0,symbols:a=!0}={}){let r="";if(t&&(r+="abcdefghijkmnopqrstuvwxyz"),n&&(r+="ABCDEFGHJKLMNPQRSTUVWXYZ"),s&&(r+="23456789"),a&&(r+="!@#$%^&*()-_=+[]{};:,.?"),!r)return"";let o=256-256%r.length,l=[];for(;l.length<e;){let d=crypto.getRandomValues(new Uint8Array(1))[0];d<o&&l.push(r[d%r.length])}return l.join("")}var g=(e,t=document)=>t.querySelector(e),m=e=>String(e??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[t]),Xe=e=>e?new Date(e).toLocaleString(void 0,{dateStyle:"medium",timeStyle:"short"}):"\u2014",jt=["Bitwarden (JSON, CSV)","1Password (1PUX, 1PIF, CSV)","Proton Pass (CSV)","Dashlane (CSV, JSON)","LastPass (CSV)","KeePass 2 (XML, CSV)","KeePassXC (CSV)","Enpass (JSON, CSV)","Monica (generic JSON or CSV)","Apple Passwords (CSV)","Chrome, Edge, Google (CSV)","Firefox (CSV)","Any CSV with a header row"],Ze="vault-convert:prefs",ee={theme:"system",density:"comfortable",sort:"name",maskDetail:!0,columns:{username:!0,url:!0,folder:!0,flags:!0,updated:!1}};function Ft(){try{let e=JSON.parse(localStorage.getItem(Ze)||"{}");return{...ee,...e,columns:{...ee.columns,...e.columns||{}}}}catch{return structuredClone(ee)}}var k=Ft(),Qe=()=>{try{localStorage.setItem(Ze,JSON.stringify(k))}catch{}},Ye={name:(e,t)=>f(e).localeCompare(f(t)),updated:(e,t)=>(t.updatedAt||"").localeCompare(e.updatedAt||""),vault:(e,t)=>N(e).localeCompare(N(t))||f(e).localeCompare(f(t)),username:(e,t)=>(e.username||"").localeCompare(t.username||"")||f(e).localeCompare(f(t))},i={items:[],meta:{vaults:[b],folders:{}},view:{kind:"all"},query:"",selected:new Set,openId:null,revealDetail:!1,started:!1,history:[],analysis:Y([])},A=e=>i.items.find(t=>t.id===e),et=()=>J([...i.meta.vaults,...i.items.map(v)]).sort((e,t)=>e.localeCompare(t)),tt=e=>J([...i.meta.folders[e]||[],...i.items.filter(t=>v(t)===e&&t.folder).map(t=>t.folder)]).sort();function q(e){i.meta.vaults.includes(e)||i.meta.vaults.push(e)}function ue(e,t){t&&(i.meta.folders[e]||(i.meta.folders[e]=[]),i.meta.folders[e].includes(t)||i.meta.folders[e].push(t))}function x(){i.history.push(structuredClone({items:i.items,meta:i.meta})),i.history.length>60&&i.history.shift()}function nt(){let e=i.history.pop();if(!e)return E("Nothing to undo");i.items=e.items,i.meta=e.meta,i.selected=new Set([...i.selected].filter(t=>A(t))),i.openId&&!A(i.openId)&&(i.openId=null),S()}function W(e,t){let n=A(e);n&&(x(),t(n),n.updatedAt=new Date().toISOString(),S())}function We(e,t){x();for(let n of e){let s=A(n);s&&(t(s),s.updatedAt=new Date().toISOString())}S()}function $e(e){let t=new Set(e);i.items=i.items.filter(n=>!t.has(n.id));for(let n of e)i.selected.delete(n);t.has(i.openId)&&(i.openId=null)}function Se(e){let t=i.items.filter(a=>e.includes(a.id));if(t.length<2)return null;let n=qe(t);n.updatedAt=new Date().toISOString();let s=t[0].id;i.items=i.items.filter(a=>a.id===s||!e.includes(a.id)).map(a=>a.id===s?n:a);for(let a of e)a!==s&&i.selected.delete(a);return i.openId&&e.includes(i.openId)&&(i.openId=s),n}function S(){i.analysis=Y(i.items),i.view.kind==="dupes"&&!i.analysis.dupeIds.size&&!i.analysis.conflictIds.size&&(i.view={kind:"all"}),L()}function Vt(e){let t=i.view,n=i.analysis;switch(t.kind){case"fav":return e.favorite;case"attention":return(n.flags.get(e.id)||[]).length>0;case"dupes":return n.dupeIds.has(e.id)||n.conflictIds.has(e.id);case"totp":return n.totpOnly.has(e.id);case"type":return e.type===t.type;case"vault":return v(e)===t.vault;case"folder":return v(e)===t.vault&&(e.folder||"")===(t.folder||"");default:return!0}}function Mt(e,t){if(!t)return!0;let n=[f(e),e.username,e.urls.join(" "),e.notes,e.folder,v(e),e.tags.join(" "),...e.customFields.filter(s=>!s.hidden).map(s=>`${s.name} ${s.value}`)].join(" ").toLowerCase();return t.toLowerCase().split(/\s+/).every(s=>n.includes(s))}function ce(){let e=i.query.trim(),t=Ye[k.sort]||Ye.name;return i.items.filter(n=>Vt(n)&&Mt(n,e)).sort(t)}function L(){Rt(),(i.items.length||i.started)&&(Jt(),Ae(),ke())}function Rt(){let e=i.items.length>0||i.started;g("#welcome").hidden=e,g("#workspace").hidden=!e,g("#sidebar").hidden=!e,g("#layout").classList.toggle("has-detail",e&&!!i.openId&&!!A(i.openId)),g("#btn-undo").disabled=i.history.length===0,g("#sort").value=k.sort,e||Bt()}function Bt(){g("#welcome").innerHTML=`
+    <div class="hero">
+      <p class="eyebrow">Offline password vault converter</p>
+      <h1>Move your passwords between managers, privately.</h1>
+      <p class="lede">Drop an export from any password manager. Everything is parsed, checked and edited in this page.
+        Nothing is uploaded, and this app makes no network requests.</p>
+      <div class="dropzone" data-action="pick-files" role="button" tabindex="0">
+        <div class="dz-icon" aria-hidden="true">\u2B06</div>
+        <strong>Drop files here, or click to choose</strong>
+        <span>CSV, JSON, XML, 1PUX, 1PIF. You can load several files.</span>
+      </div>
+      <div class="hero-actions">
+        <button class="btn ghost" data-action="start-empty">Start with an empty vault</button>
+      </div>
+      <h3>Recognised formats</h3>
+      <ul class="format-chips">${jt.map(e=>`<li>${m(e)}</li>`).join("")}</ul>
+      <p class="fine">Encrypted backups (KeePass .kdbx, encrypted Bitwarden JSON, password-protected ZIP) can't be read here.
+        Export them unencrypted first, then delete the unencrypted file after you're done.</p>
+    </div>`}function Jt(){let e=i.analysis,t=i.items,n=(o,l={})=>{let d=i.view;return d.kind!==o?!1:o==="vault"?d.vault===l.vault:o==="folder"?d.vault===l.vault&&(d.folder||"")===(l.folder||""):o==="type"?d.type===l.type:!0},s=(o,l,d,p={},u=0)=>{let c=Object.entries(p).map(([$,h])=>`data-${$}="${m(h)}"`).join(" ");return`<button class="nav depth-${u}${n(o,p)?" active":""}" data-action="nav" data-kind="${o}" ${c}>
+      <span class="nav-label">${m(l)}</span><span class="count">${d}</span></button>`},a=["login","note","card","identity"].filter(o=>t.some(l=>l.type===o)),r=et();g("#sidebar").innerHTML=`
+    <section>
+      <h4>Library</h4>
+      ${s("all","All items",t.length)}
+      ${s("fav","Favourites",t.filter(o=>o.favorite).length)}
+      ${s("attention","Needs attention",t.filter(o=>(e.flags.get(o.id)||[]).length).length)}
+      ${s("dupes","Duplicates & conflicts",e.dupeIds.size+e.conflictIds.size)}
+      ${s("totp","Authenticator only",e.totpOnly.size)}
+    </section>
+    ${a.length?`<section><h4>Item types</h4>
+      ${a.map(o=>s("type",D[o]+"s",t.filter(l=>l.type===o).length,{type:o})).join("")}
+    </section>`:""}
+    <section>
+      <h4>Vaults</h4>
+      ${r.map(o=>{let l=t.filter(p=>v(p)===o).length,d=tt(o);return`<div class="nav-group">
+          <div class="nav-row">
+            ${s("vault",o,l,{vault:o})}
+            <span class="mini">
+              <button data-action="new-folder" data-vault="${m(o)}" title="New folder in ${m(o)}" aria-label="New folder">+</button>
+              <button data-action="rename-vault" data-vault="${m(o)}" title="Rename vault" aria-label="Rename vault">\u270E</button>
+              <button data-action="delete-vault" data-vault="${m(o)}" title="Delete vault (items move to ${b})" aria-label="Delete vault">\u2715</button>
+            </span>
+          </div>
+          ${d.map(p=>s("folder",p,t.filter(u=>v(u)===o&&u.folder===p).length,{vault:o,folder:p},1)).join("")}
+        </div>`}).join("")}
+      <div class="sidebar-add">
+        <button class="btn sm ghost" data-action="new-vault">+ New vault</button>
+      </div>
+    </section>`}function Ae(){let e=ce(),t=i.analysis,n=k.columns,s=4+["username","url","folder","flags","updated"].filter(l=>n[l]).length;g("#banner").innerHTML=i.view.kind==="dupes"?qt():"";let a=`<strong>${e.length}</strong> of ${i.items.length} items`;g("#counts").innerHTML=a+(i.selected.size?` \xB7 <span class="sel">${i.selected.size} selected</span>`:"");let r=g("#bulk");r.hidden=i.selected.size===0,r.innerHTML=i.selected.size?Ht():"";let o=[`<th class="c-check"><input type="checkbox" data-action="select-all" aria-label="Select all visible" ${e.length&&e.every(l=>i.selected.has(l.id))?"checked":""}/></th>`,'<th class="c-fav" aria-label="Favourite"></th>','<th class="c-name">Name</th>',n.username?"<th>Username</th>":"",n.url?"<th>Website</th>":"",n.folder?"<th>Vault / folder</th>":"",n.flags?"<th>Checks</th>":"",n.updated?"<th>Updated</th>":""];g("#thead").innerHTML=`<tr>${o.join("")}</tr>`,g("#rows").innerHTML=e.length?e.map(l=>Gt(l,t,n)).join(""):`<tr><td colspan="${s}" class="empty">Nothing matches this view. ${i.query?"Try a different search.":""}</td></tr>`}function Gt(e,t,n){let s=t.flags.get(e.id)||[],a=i.selected.has(e.id),r=e.urls[0]||"",o=[`<td class="c-check"><input type="checkbox" data-action="select" data-id="${e.id}" ${a?"checked":""} aria-label="Select ${m(f(e))}"/></td>`,`<td class="c-fav"><button class="star${e.favorite?" on":""}" data-action="fav" data-id="${e.id}" aria-label="Toggle favourite">\u2605</button></td>`,`<td class="c-name"><div class="name">
+        <span class="glyph" title="${m(D[e.type])}">${me[e.type]}</span>
+        <div><strong>${m(f(e))}</strong>
+          <small>${m(D[e.type])}${e.tags.length?" \xB7 "+m(e.tags.join(", ")):""}</small></div>
+      </div></td>`,n.username?`<td class="c-user">${m(e.username)}</td>`:"",n.url?`<td class="c-url">${m(U(r)||r)}${e.urls.length>1?` <small>+${e.urls.length-1}</small>`:""}</td>`:"",n.folder?`<td class="c-folder">${m(N(e))}</td>`:"",n.flags?`<td class="c-flags">${s.slice(0,2).map(l=>`<span class="chip ${l.level}" title="${m(l.hint)}">${m(l.label)}</span>`).join("")}${s.length>2?`<span class="chip">+${s.length-2}</span>`:""}</td>`:"",n.updated?`<td class="c-date">${m(e.updatedAt?new Date(e.updatedAt).toLocaleDateString():"\u2014")}</td>`:""];return`<tr data-row="${e.id}" class="${a?"selected":""}${i.openId===e.id?" open":""}">${o.join("")}</tr>`}function Ht(){let e=[...i.selected],t=e.some(n=>i.analysis.totpOnly.has(n));return`
+    <button class="btn sm" data-action="bulk-fav">Favourite</button>
+    <button class="btn sm" data-action="bulk-move">Move to vault\u2026</button>
+    <button class="btn sm" data-action="bulk-merge" ${e.length<2?"disabled":""}>Merge</button>
+    <button class="btn sm" data-action="bulk-link" ${t?"":"disabled"}>Link authenticator\u2026</button>
+    <button class="btn sm" data-action="bulk-export">Export selection</button>
+    <button class="btn sm danger" data-action="bulk-delete">Delete</button>
+    <button class="btn sm ghost" data-action="bulk-clear">Clear</button>`}function qt(){let e=i.analysis.dupes;return!e.exact.length&&!e.conflicts.length?'<div class="banner ok">No duplicates or conflicting logins found.</div>':`<div class="banner warn">
+    <div>
+      <strong>${e.exact.length} exact duplicate group(s)</strong> and <strong>${e.conflicts.length} conflicting login group(s)</strong>.
+      Merging keeps every field. When two items disagree, the second value is saved as an alternate custom field, so nothing is lost.
+    </div>
+    <div class="banner-actions">
+      <button class="btn sm" data-action="dupes-merge-exact" ${e.exact.length?"":"disabled"}>Merge exact duplicates</button>
+      <button class="btn sm" data-action="dupes-keep-newest" ${e.exact.length?"":"disabled"}>Keep newest, delete rest</button>
+      <button class="btn sm" data-action="dupes-merge-conflicts" ${e.conflicts.length?"":"disabled"}>Merge conflicting logins</button>
+    </div>
+  </div>`}function ke(){let e=g("#detail"),t=i.openId?A(i.openId):null;if(e.hidden=!t,!t){e.innerHTML="";return}let n=i.analysis.flags.get(t.id)||[],s=!i.revealDetail,a=t.type==="login",r=i.analysis.totpOnly.has(t.id)?be(t,i.items).slice(0,6):[];e.innerHTML=`
+    <header class="detail-head">
+      <div class="detail-title">
+        <span class="glyph big">${me[t.type]}</span>
+        <div><strong>${m(f(t))}</strong><small>${m(D[t.type])} \xB7 ${m(N(t))}</small></div>
+      </div>
+      <button class="btn sm ghost" data-action="close-detail" aria-label="Close editor">\u2715</button>
+    </header>
+    ${n.length?`<div class="flag-list">${n.map(o=>`
+      <div class="flag ${o.level}">
+        <div><strong>${m(o.label)}</strong><span>${m(o.hint)}</span></div>
+        ${Kt(o,t)}
+      </div>`).join("")}</div>`:""}
+    <form class="fields" autocomplete="off" onsubmit="return false">
+      <div class="two">
+        <label>Type<select data-field="type">${Object.keys(D).map(o=>`<option value="${o}" ${o===t.type?"selected":""}>${D[o]}</option>`).join("")}</select></label>
+        <label class="check fav-check"><input type="checkbox" data-field="favorite" ${t.favorite?"checked":""}/> Favourite</label>
+      </div>
+      <label>Name<input data-field="name" value="${m(t.name)}" /></label>
+      <div class="two">
+        <label>Vault<input list="vault-list" data-field="vault" value="${m(v(t))}" /></label>
+        <label>Folder<input list="folder-list" data-field="folder" value="${m(t.folder)}" /></label>
+      </div>
+      <datalist id="vault-list">${et().map(o=>`<option value="${m(o)}"></option>`).join("")}</datalist>
+      <datalist id="folder-list">${tt(v(t)).map(o=>`<option value="${m(o)}"></option>`).join("")}</datalist>
+
+      ${a?`
+        <label>Username<div class="with-btn"><input data-field="username" value="${m(t.username)}" />
+          <button type="button" class="btn sm" data-action="copy" data-what="username" data-id="${t.id}">Copy</button></div></label>
+        <label>Password
+          <div class="with-btn">
+            <input data-field="password" type="${s?"password":"text"}" value="${m(t.password)}" />
+            <button type="button" class="btn sm" data-action="reveal">${s?"Show":"Hide"}</button>
+            <button type="button" class="btn sm" data-action="copy" data-what="password" data-id="${t.id}">Copy</button>
+            <button type="button" class="btn sm" data-action="gen" data-id="${t.id}">Generate</button>
+          </div>
+          <div class="strength s${ye(t.password)}" aria-label="Password strength"><span></span></div>
+        </label>
+        <label>Website(s), one per line<textarea data-field="urls" rows="2">${m(t.urls.join(`
+`))}</textarea></label>
+        <label>One-time code<div class="with-btn"><input data-field="totp" value="${m(t.totp)}" placeholder="Base32 secret or otpauth:// link" /></div></label>
+        ${t.totp?zt(t):""}
+      `:""}
+
+      ${r.length?`<div class="suggest">
+        <strong>Link this authenticator to a login</strong>
+        <div class="suggest-list">${r.map(o=>`<button type="button" class="btn sm" data-action="link" data-id="${o.item.id}" data-source="${t.id}">${m(f(o.item))}${o.item.username?` <small>${m(o.item.username)}</small>`:""}</button>`).join("")}</div>
+      </div>`:""}
+
+      <label>Notes<textarea data-field="notes" rows="4">${m(t.notes)}</textarea></label>
+
+      <div class="cf">
+        <div class="cf-head"><strong>Custom fields</strong>
+          <button type="button" class="btn sm" data-action="cf-add" data-id="${t.id}">+ Add field</button></div>
+        ${t.customFields.map((o,l)=>`
+          <div class="cf-row">
+            <input data-field="cf-name" data-index="${l}" value="${m(o.name)}" aria-label="Field name" />
+            <input data-field="cf-value" data-index="${l}" value="${m(o.value)}" type="${o.hidden&&s?"password":"text"}" aria-label="Field value" />
+            <button type="button" class="btn sm${o.hidden?" on":""}" data-action="cf-hide" data-index="${l}" title="Hide value">\u25CF</button>
+            <button type="button" class="btn sm danger" data-action="cf-del" data-index="${l}" aria-label="Remove field">\u2715</button>
+          </div>`).join("")||'<p class="fine">No custom fields.</p>'}
+      </div>
+
+      <label>Tags<input data-field="tags" value="${m(t.tags.join(", "))}" placeholder="Comma separated" /></label>
+      <p class="meta">Created ${Xe(t.createdAt)} \xB7 Updated ${Xe(t.updatedAt)}<br/>Source: ${m(t.source)}</p>
+    </form>
+    <footer class="detail-foot">
+      <button class="btn" data-action="dup-item" data-id="${t.id}">Duplicate</button>
+      <button class="btn danger" data-action="delete-item" data-id="${t.id}">Delete</button>
+    </footer>`}function Kt(e,t){switch(e.code){case"no-password":return`<button class="btn sm" data-action="gen" data-id="${t.id}">Generate password</button>`;case"duplicate":case"conflict":return'<button class="btn sm" data-action="show-dupes">Review</button>';case"weak":case"reused":return`<button class="btn sm" data-action="gen" data-id="${t.id}">Replace with generated</button>`;default:return""}}function zt(e){return _(e.totp)?`<div class="totp" id="totp-box">
+      <div><span class="totp-code" id="totp-code" data-secret="${m(e.totp)}">\u2026 \u2026</span>
+      <small id="totp-left"></small></div>
+      <div class="totp-bar"><span id="totp-bar"></span></div>
+      <button type="button" class="btn sm" data-action="copy" data-what="totp" data-id="${e.id}">Copy code</button>
+    </div>`:`<div class="totp invalid">This secret is not valid base32. Re-copy it from the site's authenticator setup.</div>`}async function st(){let e=document.getElementById("totp-code");if(!e)return;let t=z(e.dataset.secret)?.period||30,n=await he(e.dataset.secret),s=Ve(t);e.textContent=n?`${n.slice(0,3)} ${n.slice(3)}`:"\u2014",document.getElementById("totp-left").textContent=`${s}s left`,document.getElementById("totp-bar").style.width=`${s/t*100}%`}var te=null;function Z(e,{onMount:t,wide:n=!1}={}){return new Promise(s=>{let a=g("#modal");a.className=`modal${n?" wide":""}`,a.innerHTML=`<div class="modal-inner">${e}</div>`,te=s,a.onclose=()=>{let r=te;te=null,r?.(null)},a.showModal(),t?.(a)})}function ne(e){let t=te;te=null,g("#modal").close(),t?.(e)}async function le(e,t="",n="Name"){return Z(`
+    <h2>${m(e)}</h2>
+    <form id="prompt-form" class="stack">
+      <label>${m(n)}<input id="prompt-input" value="${m(t)}" /></label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-action="modal-close">Cancel</button>
+        <button class="btn primary" type="submit">OK</button>
+      </div>
+    </form>`,{onMount:s=>{let a=s.querySelector("#prompt-input");a.focus(),a.select(),s.querySelector("#prompt-form").addEventListener("submit",r=>{r.preventDefault(),ne(a.value.trim()||null)})}})}async function de(e,t,n="Confirm"){return await Z(`
+    <h2>${m(e)}</h2>
+    <p>${t}</p>
+    <div class="modal-actions">
+      <button class="btn ghost" data-action="modal-close">Cancel</button>
+      <button class="btn danger" data-action="modal-ok">${m(n)}</button>
+    </div>`)===!0}function _t(e){return/^(Generic|JSON|1Password \(1PIF\))/.test(e)?"Imported":e.split(" ")[0]}function Xt(e){let t=e.items.reduce((s,a)=>(s[a.type]=(s[a.type]||0)+1,s),{}),n=e.items.slice(0,5).map(s=>`<li>${m(f(s))} <small>${m(D[s.type])}</small></li>`).join("");return Z(`
+    <h2>Import ${m(e.fileName)}</h2>
+    <p class="lede">Detected <strong>${m(e.format)}</strong> with <strong>${e.count}</strong> item(s).</p>
+    <div class="type-counts">${Object.entries(t).map(([s,a])=>`<span class="chip info">${a} ${m(D[s])}</span>`).join("")}</div>
+    ${e.warnings.length?`<ul class="warn-list">${e.warnings.map(s=>`<li>${m(s)}</li>`).join("")}</ul>`:""}
+    <form id="import-form" class="stack">
+      <label>Put imported items in vault<input id="imp-vault" value="${m(_t(e.format))}" required /></label>
+      <p class="fine">If the file already has vault names, they are kept under this vault as "Name \xB7 Vault".</p>
+      <label class="check"><input type="checkbox" id="imp-skip" checked /> Skip items that exactly match something already here</label>
+      <details><summary>Preview the first items</summary><ul class="preview">${n}</ul></details>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-action="modal-close">Cancel</button>
+        <button class="btn primary" type="submit">Import ${e.count} item(s)</button>
+      </div>
+    </form>`,{onMount:s=>{s.querySelector("#import-form").addEventListener("submit",a=>{a.preventDefault(),ne({vault:s.querySelector("#imp-vault").value.trim()||b,skipDupes:s.querySelector("#imp-skip").checked})})}})}function Ce(e="all"){let t=()=>({all:i.items,selected:i.items.filter(s=>i.selected.has(s.id)),view:ce()}),n={all:`All items (${i.items.length})`,selected:`Selected (${i.selected.size})`,view:`Current view (${ce().length})`};return Z(`
+    <h2>Export</h2>
+    <div class="export-grid">
+      <fieldset class="formats">
+        <legend>Format</legend>
+        ${ve.map((s,a)=>`
+          <label class="fmt">
+            <input type="radio" name="fmt" value="${s.id}" ${a===0?"checked":""}/>
+            <div><strong>${m(s.label)}</strong><small>${m(s.desc)} <code>.${s.ext}</code></small></div>
+          </label>`).join("")}
+      </fieldset>
+      <div class="export-side">
+        <fieldset>
+          <legend>What to export</legend>
+          ${["all","selected","view"].map(s=>`
+            <label class="check"><input type="radio" name="scope" value="${s}" ${s===e?"checked":""} ${s==="selected"&&!i.selected.size?"disabled":""}/> ${n[s]}</label>`).join("")}
+        </fieldset>
+        <div id="exp-summary" class="summary"></div>
+        <p class="warning">Exported files contain passwords in plain text. Keep them private, import them, then delete the file.</p>
+        <div class="modal-actions">
+          <button class="btn ghost" data-action="modal-close">Close</button>
+          <button class="btn primary" id="exp-download">Download</button>
+        </div>
+      </div>
+    </div>`,{wide:!0,onMount:s=>{let a=()=>{let r=s.querySelector('input[name="fmt"]:checked').value,o=s.querySelector('input[name="scope"]:checked').value,l=t()[o],d=we(r,l),p=Object.entries(d.excluded).map(([u,c])=>`${c} ${D[u]}`).join(", ");s.querySelector("#exp-summary").innerHTML=`
+          <p><strong>${d.exported}</strong> item(s) will be written to <code>${m(d.filename)}</code>.</p>
+          ${p?`<p class="fine">Left out (not supported by this format): ${m(p)}.</p>`:""}
+          ${d.notes.length?`<ul class="warn-list">${d.notes.map(u=>`<li>${m(u)}</li>`).join("")}</ul>`:""}`,s.querySelector("#exp-download").disabled=d.exported===0};s.addEventListener("change",a),s.querySelector("#exp-download").addEventListener("click",()=>{let r=s.querySelector('input[name="fmt"]:checked').value,o=s.querySelector('input[name="scope"]:checked').value;Wt(we(r,t()[o])),E("Export downloaded. Delete it once it has been imported.")}),a()}})}function Yt(){return Z(`
+    <h2>Preferences</h2>
+    <form id="prefs-form" class="stack">
+      <div class="two">
+        <label>Theme<select name="theme">
+          <option value="system">Match system</option><option value="light">Light</option><option value="dark">Dark</option>
+        </select></label>
+        <label>Density<select name="density">
+          <option value="comfortable">Comfortable</option><option value="compact">Compact</option>
+        </select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="maskDetail"/> Hide passwords in the editor by default</label>
+      <fieldset>
+        <legend>Table columns</legend>
+        ${Object.keys(ee.columns).map(e=>`<label class="check"><input type="checkbox" name="col-${e}" ${k.columns[e]?"checked":""}/> ${e==="url"?"Website":e==="folder"?"Vault / folder":e[0].toUpperCase()+e.slice(1)}</label>`).join("")}
+      </fieldset>
+      <p class="fine">Only these display preferences are saved in this browser. Your items are never stored.</p>
+      <div class="modal-actions"><button class="btn primary" type="button" data-action="modal-close">Done</button></div>
+    </form>`,{onMount:e=>{let t=e.querySelector("#prefs-form");t.elements.theme.value=k.theme,t.elements.density.value=k.density,t.elements.maskDetail.checked=k.maskDetail,t.addEventListener("change",()=>{k.theme=t.elements.theme.value,k.density=t.elements.density.value,k.maskDetail=t.elements.maskDetail.checked;for(let n of Object.keys(ee.columns))k.columns[n]=t.elements[`col-${n}`].checked;Qe(),at(),L()})}})}function at(){document.documentElement.dataset.theme=k.theme,g("#app").dataset.density=k.density}function E(e,t="ok"){let n=document.createElement("div");n.className=`toast ${t}`,n.textContent=e,g("#toasts").appendChild(n),setTimeout(()=>n.remove(),4500)}function Wt(e){let t=new Blob([e.content],{type:e.mime}),n=URL.createObjectURL(t),s=Object.assign(document.createElement("a"),{href:n,download:e.filename});document.body.appendChild(s),s.click(),s.remove(),setTimeout(()=>URL.revokeObjectURL(n),2e3)}async function xe(e,t){try{await navigator.clipboard.writeText(e)}catch{let n=Object.assign(document.createElement("textarea"),{value:e});document.body.appendChild(n),n.select();try{document.execCommand("copy")}catch{}n.remove()}E(`${t} copied. The clipboard is cleared after 30 seconds.`),setTimeout(()=>navigator.clipboard?.writeText("").catch(()=>{}),3e4)}function Zt(e){i.openId=e,i.revealDetail=!k.maskDetail,L()}function Qt(e,t){let n=A(e),s=A(t);if(!n||!s)return;x();let a=ze(s,n);i.items=i.items.filter(r=>r.id!==n.id).map(r=>r.id===s.id?a:r),i.selected.delete(n.id),i.openId=s.id,E(`Linked the authenticator to ${f(s)}`),S()}async function ot(e){for(let t of e)try{let n=await je(t.name,new Uint8Array(await t.arrayBuffer()));if(!n.items.length){E(`${t.name}: no items found`,"error");continue}let s=await Xt(n);if(!s)continue;x();let a=new Set(i.items.map(ie)),r=n.items.some(d=>d.vault&&d.vault!==b),o=0,l=0;for(let d of n.items){if(d.vault=r&&d.vault!==b?`${s.vault} \xB7 ${d.vault}`:s.vault,s.skipDupes&&a.has(ie(d))){l++;continue}q(d.vault),ue(d.vault,d.folder),i.items.push(d),o++}i.started=!0,E(`Imported ${o} item(s) from ${t.name}${l?`, skipped ${l} duplicate(s)`:""}`),S()}catch(n){E(`${t.name}: ${n.message}`,"error")}}function rt(){x();let e=i.view,t=e.kind==="vault"||e.kind==="folder"?e.vault:b,n=e.kind==="folder"&&e.folder||"",s=R({vault:t,folder:n});q(t),ue(t,n),i.items.push(s),i.started=!0,i.openId=s.id,i.revealDetail=!0,S(),g('#detail input[data-field="name"]')?.focus()}var en={"pick-files":()=>g("#file-input").click(),import:()=>g("#file-input").click(),"start-empty":()=>{i.started=!0,L()},"new-item":rt,undo:nt,export:()=>Ce("all"),prefs:Yt,"toggle-sidebar":()=>document.body.classList.toggle("sidebar-open"),"modal-close":()=>ne(null),"modal-ok":()=>ne(!0),nav(e){let t=e.dataset;i.view={kind:t.kind,vault:t.vault,folder:t.folder,type:t.type},document.body.classList.remove("sidebar-open"),L()},select(e){let t=e.dataset.id;i.selected.has(t)?i.selected.delete(t):i.selected.add(t),L()},"select-all"(){let e=ce(),t=e.length&&e.every(n=>i.selected.has(n.id));for(let n of e)t?i.selected.delete(n.id):i.selected.add(n.id);L()},fav(e){W(e.dataset.id,t=>{t.favorite=!t.favorite})},"close-detail":()=>{i.openId=null,L()},reveal(){i.revealDetail=!i.revealDetail,ke()},async copy(e){let t=A(e.dataset.id);if(!t)return;let n=e.dataset.what;if(n==="username")return xe(t.username,"Username");if(n==="password")return xe(t.password,"Password");if(n==="totp"){let s=await he(t.totp);s&&xe(s,"One-time code")}},gen(e){let t=_e({length:24});W(e.dataset.id,n=>{n.password=t}),i.revealDetail=!0,ke()},"cf-add":e=>W(e.dataset.id,t=>t.customFields.push({name:"",value:"",hidden:!1})),"cf-hide":e=>W(i.openId,t=>{let n=t.customFields[+e.dataset.index];n&&(n.hidden=!n.hidden)}),"cf-del":e=>W(i.openId,t=>t.customFields.splice(+e.dataset.index,1)),async"delete-item"(e){let t=A(e.dataset.id);t&&await de("Delete item?",`\u201C${m(f(t))}\u201D will be removed. You can undo this with the Undo button.`,"Delete")&&(x(),$e([t.id]),S())},"dup-item"(e){let t=A(e.dataset.id);if(!t)return;x();let n=structuredClone(t);n.id=R().id,n.name=`${t.name} (copy)`,i.items.push(n),i.openId=n.id,S()},"show-dupes"(){i.view={kind:"dupes"},L()},link(e){ne(null),Qt(e.dataset.source,e.dataset.id)},async"new-vault"(){let e=await le("New vault","","Vault name");e&&(x(),q(e),i.view={kind:"vault",vault:e},S())},async"new-folder"(e){let t=e.dataset.vault||b,n=await le(`New folder in \u201C${t}\u201D`,"","Folder name");n&&(x(),q(t),ue(t,n),i.view={kind:"folder",vault:t,folder:n},S())},async"rename-vault"(e){let t=e.dataset.vault,n=await le("Rename vault",t,"Vault name");if(!(!n||n===t)){x();for(let s of i.items)v(s)===t&&(s.vault=n);i.meta.vaults=J(i.meta.vaults.map(s=>s===t?n:s)),i.meta.folders[n]=i.meta.folders[t]||[],delete i.meta.folders[t],i.view.vault===t&&(i.view.vault=n),S()}},async"delete-vault"(e){let t=e.dataset.vault,n=i.items.filter(a=>v(a)===t).length;if(await de(`Delete vault \u201C${t}\u201D?`,n?`Its ${n} item(s) will move to \u201C${b}\u201D.`:"The empty vault will be removed.","Delete vault")){x();for(let a of i.items)v(a)===t&&(a.vault=b);i.meta.vaults=i.meta.vaults.filter(a=>a!==t),delete i.meta.folders[t],q(b),i.view.vault===t&&(i.view={kind:"all"}),S()}},"bulk-clear":()=>{i.selected.clear(),L()},"bulk-fav":()=>We([...i.selected],e=>{e.favorite=!0}),async"bulk-move"(){let e=await le(`Move ${i.selected.size} item(s) to vault`,b,"Vault name (existing or new)");e&&(q(e),We([...i.selected],t=>{t.vault=e,t.folder=""}))},"bulk-merge"(){let e=i.items.filter(t=>i.selected.has(t.id)).map(t=>t.id);e.length<2||(x(),Se(e),S(),E(`Merged ${e.length} items into one`))},"bulk-link"(){let e=[...i.selected].find(t=>i.analysis.totpOnly.has(t));e&&tn(e)},"bulk-export":()=>Ce("selected"),async"bulk-delete"(){let e=[...i.selected];await de(`Delete ${e.length} item(s)?`,"You can undo this with the Undo button.","Delete")&&(x(),$e(e),S())},"dupes-merge-exact"(){x();for(let e of Y(i.items).dupes.exact)Se(e);S(),E("Exact duplicates merged")},async"dupes-keep-newest"(){let t=Y(i.items).dupes.exact.flatMap(n=>n.filter(s=>s!==Ke(n.map(a=>A(a)))));await de("Keep newest only?",`${t.length} older duplicate(s) will be deleted. Undo can bring them back.`,"Delete duplicates")&&(x(),$e(t),S())},"dupes-merge-conflicts"(){x();for(let e=0;e<500;e++){let t=Y(i.items).dupes.conflicts[0];if(!t)break;Se(t)}S(),E("Conflicting logins merged. Other passwords are kept as alternates.")}};function tn(e){let t=A(e);if(!t)return;let n=be(t,i.items).slice(0,25);Z(`
+    <h2>Link authenticator</h2>
+    <p class="lede">Choose the login that <strong>${m(f(t))}</strong> belongs to. The code moves onto that login and the standalone item is removed.</p>
+    <div class="suggest-list stacked">
+      ${n.length?n.map(s=>`<button class="btn" data-action="link" data-id="${s.item.id}" data-source="${e}">${m(f(s.item))} <small>${m(s.item.username)}</small></button>`).join(""):'<p class="fine">Every login already has a one-time code.</p>'}
+    </div>
+    <div class="modal-actions"><button class="btn ghost" data-action="modal-close">Cancel</button></div>`)}document.addEventListener("click",e=>{let t=e.target.closest("[data-action]");if(!t){let s=e.target.closest("tr[data-row]");s&&!e.target.closest("input,button,select,textarea,label,a")&&Zt(s.dataset.row);return}let n=en[t.dataset.action];n&&(e.preventDefault(),n(t,e))});document.addEventListener("keydown",e=>{e.key==="Enter"&&e.target.matches?.(".dropzone")&&g("#file-input").click();let t=/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName||"");if(e.key==="Escape"&&!g("#modal").open&&i.openId){i.openId=null,L();return}if(t||g("#modal").open)return;let n=e.ctrlKey||e.metaKey;e.key==="/"?(e.preventDefault(),g("#search").focus()):!n&&e.key.toLowerCase()==="n"?rt():n&&e.key.toLowerCase()==="z"?(e.preventDefault(),nt()):n&&e.key.toLowerCase()==="e"&&(e.preventDefault(),Ce("all"))});document.addEventListener("change",e=>{let t=e.target;if(t.id==="sort"){k.sort=t.value,Qe(),Ae();return}t.dataset.field&&i.openId&&nn(t)});function nn(e){let t=e.dataset.field,n=e.type==="checkbox"?e.checked:e.value;W(i.openId,s=>{switch(t){case"type":s.type=n;break;case"name":s.name=String(n).trim();break;case"vault":s.vault=String(n).trim()||b,q(s.vault);break;case"folder":s.folder=String(n).trim(),ue(v(s),s.folder);break;case"username":s.username=String(n).trim();break;case"password":s.password=n;break;case"urls":s.urls=oe(n);break;case"totp":s.totp=String(n).trim();break;case"notes":s.notes=n;break;case"tags":s.tags=String(n).split(",").map(a=>a.trim()).filter(Boolean);break;case"favorite":s.favorite=n;break;case"cf-name":s.customFields[+e.dataset.index]&&(s.customFields[+e.dataset.index].name=n);break;case"cf-value":s.customFields[+e.dataset.index]&&(s.customFields[+e.dataset.index].value=n);break;default:break}})}g("#search").addEventListener("input",e=>{i.query=e.target.value,Ae()});g("#file-input").addEventListener("change",e=>{let t=[...e.target.files];e.target.value="",t.length&&ot(t)});var se=0;window.addEventListener("dragenter",e=>{e.preventDefault(),se++,document.body.classList.add("dragging")});window.addEventListener("dragleave",()=>{se=Math.max(0,se-1),se||document.body.classList.remove("dragging")});window.addEventListener("dragover",e=>e.preventDefault());window.addEventListener("drop",e=>{e.preventDefault(),se=0,document.body.classList.remove("dragging");let t=[...e.dataTransfer?.files||[]];t.length&&ot(t)});window.addEventListener("beforeunload",e=>{i.items.length&&(e.preventDefault(),e.returnValue="")});at();L();setInterval(st,1e3);st();})();
+</script>
+</body>
+</html>

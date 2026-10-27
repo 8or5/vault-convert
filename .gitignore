@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+*.log
+# Exports contain plain-text passwords. Never commit them.
+vault-export-*
+*.1pux
