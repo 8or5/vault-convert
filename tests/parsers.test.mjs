@@ -110,7 +110,7 @@ test('1PUX export round-trips through the ZIP writer and the importer', async ()
     newItem({ name: 'Site', urls: ['https://site.example'], username: 'u', password: 'p123456789ab', totp: 'JBSWY3DPEHPK3PXP', vault: 'Work', customFields: [{ name: 'Note', value: 'x', hidden: false }] }),
     newItem({ type: 'note', name: 'Secret note', notes: 'line 1\nline 2' }),
   ];
-  const out = exportItems('1password-1pux', items);
+  const out = await exportItems('1password-1pux', items);
   const files = await readZip(out.content);
   assert.ok(files.has('export.data'));
   const r = await parseFile('x.1pux', out.content);
@@ -129,23 +129,23 @@ test('ZIP writer output is readable by the reader (stored entries)', async () =>
   assert.equal(new TextDecoder().decode(files.get('dir/b.txt')), 'world');
 });
 
-test('every export format produces output and reports skipped types', () => {
+test('every export format produces output and reports skipped types', async () => {
   const items = [
     newItem({ name: 'L', urls: ['https://l.example'], username: 'u', password: 'pw-long-enough-1', totp: 'JBSWY3DPEHPK3PXP', folder: 'F' }),
     newItem({ type: 'note', name: 'N', notes: 'x' }),
     newItem({ type: 'card', name: 'C', customFields: [{ name: 'Number', value: '4111', hidden: true }] }),
   ];
   for (const f of FORMATS) {
-    const out = exportItems(f.id, items);
+    const out = await exportItems(f.id, items, { password: 'test pw', preset: 'fast' });
     assert.ok(out.content && out.content.length > 0, f.id);
     assert.equal(out.exported + Object.values(out.excluded).reduce((a, b) => a + b, 0), items.length, f.id);
   }
-  assert.equal(exportItems('chrome-csv', items).exported, 1);
+  assert.equal((await exportItems('chrome-csv', items)).exported, 1);
 });
 
 test('Bitwarden JSON export re-imports with folder and card data intact', async () => {
   const items = [newItem({ name: 'Card', type: 'card', vault: 'Money', customFields: [{ name: 'Number', value: '4111111111111111', hidden: true }, { name: 'Cardholder name', value: 'Ada', hidden: false }] })];
-  const out = exportItems('bitwarden-json', items);
+  const out = await exportItems('bitwarden-json', items);
   const json = JSON.parse(out.content);
   assert.equal(json.items[0].card.number, '4111111111111111');
   assert.equal(json.folders[0].name, 'Money');

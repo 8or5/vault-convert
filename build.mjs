@@ -10,6 +10,8 @@ const result = await build({
   minify: true,
   write: false,
   target: ['es2020'],
+  platform: 'browser',
+  alias: { crypto: './src/js/empty-module.cjs', '@xmldom/xmldom': './src/js/empty-module.cjs' },
   legalComments: 'none',
 });
 

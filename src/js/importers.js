@@ -4,7 +4,19 @@
 
 import { parseCsv, detectDelimiter } from './csv.js';
 import { readZip } from './zip.js';
-import { newItem, toIso, hostOf, splitUrls, DEFAULT_VAULT } from './model.js';
+import { newItem, toIso, hostOf, splitUrls, uid, DEFAULT_VAULT } from './model.js';
+import { isKdbx, openKdbx } from './kdbx.js';
+import { decryptBitwardenExport, BitwardenCryptoError } from './bwcrypto.js';
+import { addAttachmentBytes } from './attachments.js';
+
+/** Thrown when a file is encrypted and no password was supplied. The UI asks for one and retries. */
+export class NeedsPassword extends Error {
+  constructor(kind) {
+    super(kind === 'kdbx' ? 'This KeePass database is encrypted.' : 'This Bitwarden export is password protected.');
+    this.name = 'NeedsPassword';
+    this.kind = kind; // 'kdbx' | 'bitwarden'
+  }
+}
 
 const BW_TYPE = { 1: 'login', 2: 'note', 3: 'card', 4: 'identity' };
 const CAT_1PUX = { '001': 'login', '005': 'login', '002': 'card', '003': 'note', '004': 'identity' };
@@ -30,10 +42,27 @@ const SENSITIVE = /pin|secret|cvv|cvc|code|number|passport|security|password/i;
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const humanize = (k) => k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_.]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
-/** Entry point. `bytes` is a Uint8Array of the file contents. */
-export async function parseFile(fileName, bytes) {
+/**
+ * Entry point. `bytes` is a Uint8Array of the file contents.
+ * `options` carries { password, keyFile } for encrypted files. Without them, an encrypted
+ * file throws NeedsPassword so the caller can ask the user and call again.
+ */
+export async function parseFile(fileName, bytes, options = {}) {
   let result;
-  if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+  if (isKdbx(bytes)) {
+    if (options.password === undefined && !options.keyFile) throw new NeedsPassword('kdbx');
+    const { items } = await openKdbx(bytes, options);
+    // Imported items must not be tied to the source file: fresh ids, and attachments count as new.
+    const live = items.filter((i) => !i.trashed).map((i) => ({
+      ...i,
+      id: uid(),
+      attachments: i.attachments.map((a) => ({ ...a, existing: false })),
+      pwHistory: undefined,
+      historyCount: undefined,
+    }));
+    const warnings = live.length < items.length ? [`${items.length - live.length} item(s) in the recycle bin were not imported.`] : [];
+    result = { format: 'KeePass KDBX', items: live, warnings };
+  } else if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
     const entries = await readZip(bytes);
     if (!entries.has('export.data')) throw new Error('ZIP archive without a recognised export inside.');
     result = parse1pux(JSON.parse(decodeText(entries.get('export.data'))), []);
@@ -41,7 +70,7 @@ export async function parseFile(fileName, bytes) {
     const text = decodeText(bytes).replace(/^﻿/, '');
     const head = text.trimStart();
     if (head.startsWith('<')) result = parseKeePassXml(text, []);
-    else if (head.startsWith('{') || head.startsWith('[')) result = parseJson(text, []);
+    else if (head.startsWith('{') || head.startsWith('[')) result = await parseJson(text, [], options);
     else if (head.startsWith('***')) result = parse1pif(text, []);
     else result = parseCsvText(text, []);
   }
@@ -57,7 +86,22 @@ function decodeText(bytes) {
 
 // ---------- JSON ----------
 
-function parseJson(text, warnings) {
+/** Our own export: items map straight back, so nothing is lost on a round trip. */
+function parseVaultConvertJson(data, warnings) {
+  const items = (data.items || []).map((raw) => {
+    const item = newItem({ ...raw, id: undefined });
+    item.attachments = (raw.attachments || [])
+      .filter((a) => a && a.name)
+      .map((a) => {
+        const bytes = a.data ? Uint8Array.from(atob(a.data), (c) => c.charCodeAt(0)) : new Uint8Array();
+        return { id: addAttachmentBytes(bytes), name: a.name, size: bytes.length };
+      });
+    return item;
+  });
+  return { format: 'Vault Convert JSON', items, warnings };
+}
+
+async function parseJson(text, warnings, options = {}) {
   let data;
   try {
     data = JSON.parse(text);
@@ -69,7 +113,14 @@ function parseJson(text, warnings) {
     return parseRecords(data.filter((o) => o && typeof o === 'object').map((o) => flattenRecord(o)), 'Generic JSON', warnings);
   }
   if (!data || typeof data !== 'object') throw new Error('Unrecognised JSON structure.');
-  if (data.encrypted === true) throw new Error('This Bitwarden export is encrypted. Export it again as unencrypted JSON.');
+  if (data.format === 'vault-convert' && Array.isArray(data.items)) return parseVaultConvertJson(data, warnings);
+  if (data.encrypted === true) {
+    const accountOnly = !data.passwordProtected && !data.salt;
+    if (!accountOnly && options.password === undefined) throw new NeedsPassword('bitwarden');
+    const inner = await decryptBitwardenExport(data, options.password); // throws a clear error for account-only files
+    const result = await parseJson(inner, warnings, {});
+    return { ...result, format: 'Bitwarden JSON (encrypted)' };
+  }
   if (data.accounts) return parse1pux(data, warnings);
   if (Array.isArray(data.items)) {
     if ('encrypted' in data || data.items.some((i) => typeof i.type === 'number')) return parseBitwardenJson(data, warnings);

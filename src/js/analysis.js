@@ -15,6 +15,8 @@ export const FLAG_LABEL = {
   duplicate: 'Duplicate',
   conflict: 'Conflicting logins',
   empty: 'Empty item',
+  old: 'Not updated in a year',
+  http: 'Insecure website',
 };
 
 export const FLAG_HINT = {
@@ -28,7 +30,12 @@ export const FLAG_HINT = {
   duplicate: 'Same site, username and password as another item.',
   conflict: 'Same site and username but a different password.',
   empty: 'Nothing is filled in.',
+  old: 'This login has not changed in over a year. Consider rotating its password.',
+  http: 'The saved website uses http://, which sends the password unencrypted. Use the https:// address if the site has one.',
 };
+
+const YEAR_MS = 365 * 24 * 3600 * 1000;
+const plainHttp = (u) => /^http:\/\//i.test(u) && !/^http:\/\/(localhost|127\.|\[::1\]|192\.168\.|10\.)/i.test(u);
 
 /** Identity used to find exact duplicates. */
 export function exactKey(it) {
@@ -89,6 +96,8 @@ export function flagItem(it, ctx) {
     if (!hasUrl && (it.password || it.username)) add('no-url', 'info');
     if (it.password && passwordStrength(it.password) < 2) add('weak', 'warn');
     if (it.password && (ctx.pwCount.get(it.password) || 0) > 1) add('reused', 'warn');
+    if (it.password && it.updatedAt && ctx.now - Date.parse(it.updatedAt) > YEAR_MS) add('old', 'info');
+    if (hasUrl && it.urls.every(plainHttp)) add('http', 'warn');
   }
   if (it.totp && !isValidTotp(it.totp)) add('bad-totp', 'error');
   if (ctx.dupeIds.has(it.id)) add('duplicate', 'warn');
@@ -104,7 +113,7 @@ export function analyse(items) {
   const dupes = findDuplicateGroups(items);
   const dupeIds = new Set(dupes.exact.flat());
   const conflictIds = new Set(dupes.conflicts.flat());
-  const ctx = { pwCount, dupeIds, conflictIds };
+  const ctx = { pwCount, dupeIds, conflictIds, now: Date.now() };
   const flags = new Map();
   const totpOnly = new Set();
   for (const it of items) {

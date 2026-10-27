@@ -1,0 +1,38 @@
+import asyncio
+from playwright.async_api import async_playwright
+import os; S=os.environ.get("VC_TMP", "/tmp/vc-browser")
+async def main():
+    async with async_playwright() as p:
+        b = await p.chromium.launch()
+        ctx = await b.new_context(viewport={"width":1280,"height":800})
+        await ctx.grant_permissions(["clipboard-read","clipboard-write"])
+        app = await ctx.new_page()
+        errs=[]; app.on("pageerror", lambda e: errs.append(str(e)))
+        await app.goto("file://" + os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dist")) + "/vault-convert.html")
+        await app.screenshot(path=S+"/w.png")
+        await app.set_input_files("#file-input", S+"/test.kdbx")
+        await app.fill("input[name=password]","hunter2 pw"); await app.click("#cred-form button[type=submit]")
+        await app.wait_for_selector("tr[data-row]")
+        await app.click("[data-action=autofill]")
+        async with ctx.expect_page() as pi:
+            await app.click("#modal [data-action=assist]")
+        pop = await pi.value
+        await pop.wait_for_selector(".arow")
+        print("assist rows:", await pop.locator(".arow").count())
+        await pop.fill("#assist-q","other")
+        await pop.wait_for_timeout(200)
+        print("filtered:", await pop.locator(".arow strong").all_inner_texts(), "focus kept:", await pop.evaluate("document.activeElement.id"))
+        await pop.click("[data-assist=password]")
+        await pop.wait_for_timeout(200)
+        print("status:", await pop.inner_text(".assist-status"), "| clip:", await pop.evaluate("navigator.clipboard.readText()"))
+        await pop.screenshot(path=S+"/pop.png")
+        await pop.close()
+        await app.click("#modal [data-action=modal-close]")
+        await app.click("tr[data-row]:has-text('Example')")
+        await app.wait_for_selector(".vrow")
+        await app.screenshot(path=S+"/detail.png")
+        await app.set_viewport_size({"width":390,"height":800})
+        await app.screenshot(path=S+"/mobile.png")
+        print("errs", errs)
+        await b.close()
+asyncio.run(main())

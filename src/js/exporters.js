@@ -4,12 +4,17 @@
 import { toCsv } from './csv.js';
 import { writeZip } from './zip.js';
 import { TYPES, vaultOf, folderPath, displayName, DEFAULT_VAULT, uid } from './model.js';
+import { toOtpauthUri } from './totp.js';
+import { createDb, syncToDb, saveDb, loadModel } from './kdbx.js';
+import { encryptBitwardenExport } from './bwcrypto.js';
+import { getAttachmentBytes } from './attachments.js';
 
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-import { toOtpauthUri } from './totp.js';
 
 export const FORMATS = [
-  { id: 'vault-json', label: 'Vault Convert JSON', ext: 'json', types: TYPES, desc: 'Full-fidelity backup. Re-import it here to keep editing.' },
+  { id: 'kdbx', label: 'KeePass database (KDBX 4, encrypted)', ext: 'kdbx', types: TYPES, encrypted: true, desc: 'Opens in KeePass, KeePassXC, KeePassDX and more. Keeps attachments and every item type.' },
+  { id: 'bitwarden-encrypted', label: 'Bitwarden JSON (password protected)', ext: 'json', types: TYPES, encrypted: true, desc: 'Encrypted file Bitwarden can import into any account.' },
+  { id: 'vault-json', label: 'Vault Convert JSON', ext: 'json', types: TYPES, desc: 'Full-fidelity backup, attachments included. Re-import it here to keep editing.' },
   { id: 'generic-csv', label: 'Generic CSV', ext: 'csv', types: TYPES, desc: 'Every item type. Custom fields go into a Fields column.' },
   { id: 'bitwarden-json', label: 'Bitwarden JSON (unencrypted)', ext: 'json', types: TYPES, desc: 'Bitwarden items with folders. Keep the file private.' },
   { id: 'bitwarden-csv', label: 'Bitwarden CSV', ext: 'csv', types: TYPES, desc: 'Cards and identities become secure notes.' },
@@ -37,13 +42,66 @@ const randomId = () => {
   return btoa(String.fromCharCode(...bytes));
 };
 
-/**
- * Returns { filename, mime, content, exported, excluded, notes }.
- * `items` is the list to export; unsupported types are excluded and counted.
- */
-export function exportItems(formatId, items) {
+const withoutTrash = (items) => items.filter((i) => !i.trashed);
+const attachmentCount = (items) => items.reduce((n, i) => n + (i.attachments || []).length, 0);
+
+/** What an export would contain, without doing any work or encryption. Used for the preview. */
+export function exportPlan(formatId, items) {
   const fmt = FORMATS.find((f) => f.id === formatId);
   if (!fmt) throw new Error(`Unknown format ${formatId}`);
+  const live = withoutTrash(items);
+  if (!fmt.encrypted) {
+    const { content, ...rest } = exportSync(formatId, live);
+    return rest;
+  }
+  const supported = live.filter((it) => fmt.types.includes(it.type));
+  const notes = [];
+  const files = attachmentCount(supported);
+  if (formatId === 'bitwarden-encrypted' && files) notes.push(`${files} attachment(s) can't be stored in Bitwarden exports and will be left out.`);
+  if (formatId === 'bitwarden-encrypted' && supported.some((i) => i.customFields.length)) notes.push('Custom fields are kept as Bitwarden fields.');
+  return { exported: supported.length, excluded: {}, notes, filename: `vault-export-${formatId}-${new Date().toISOString().slice(0, 10)}.${fmt.ext}` };
+}
+
+/**
+ * Builds the export. Plain formats return a string or bytes; encrypted formats need
+ * `options`: { password, keyFile?, kdf?, preset? } for kdbx, { password, kdf? } for Bitwarden.
+ * Returns { filename, mime, content, exported, excluded, notes }.
+ */
+export async function exportItems(formatId, items, options = {}) {
+  const fmt = FORMATS.find((f) => f.id === formatId);
+  if (!fmt) throw new Error(`Unknown format ${formatId}`);
+  const live = withoutTrash(items);
+  if (!fmt.encrypted) return exportSync(formatId, live);
+
+  const plan = exportPlan(formatId, items);
+  if (formatId === 'kdbx') {
+    const supported = live.filter((it) => fmt.types.includes(it.type));
+    const db = createDb({ name: options.name || 'Vault Convert export', password: options.password, keyFile: options.keyFile, kdf: options.kdf, preset: options.preset });
+    const model = loadModel(db);
+    const copies = supported.map((it) => ({ ...structuredClone(it), source: 'KeePass KDBX', attachments: (it.attachments || []).map((a) => ({ ...a, existing: false })) }));
+    const meta = { vaults: [], folders: {} };
+    for (const it of copies) {
+      const v = vaultOf(it);
+      if (!meta.vaults.includes(v)) meta.vaults.push(v);
+    }
+    await syncToDb(db, { ...model, rootName: db.getDefaultGroup().name }, copies, meta);
+    return { ...plan, content: await saveDb(db), mime: 'application/octet-stream' };
+  }
+  // Bitwarden password-protected JSON
+  const inner = JSON.stringify(bitwardenJson(live.filter((it) => fmt.types.includes(it.type))));
+  const wrapped = await encryptBitwardenExport(inner, options.password, { kdf: options.kdf });
+  return { ...plan, content: JSON.stringify(wrapped, null, 2), mime: 'application/json' };
+}
+
+const toBase64 = (bytes) => {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+
+function exportSync(formatId, items) {
+  const fmt = FORMATS.find((f) => f.id === formatId);
+  if (!fmt || fmt.encrypted) throw new Error(`No plain exporter for ${formatId}`);
   const supported = items.filter((it) => fmt.types.includes(it.type));
   const excluded = {};
   for (const it of items) if (!fmt.types.includes(it.type)) excluded[it.type] = (excluded[it.type] || 0) + 1;
@@ -53,10 +111,20 @@ export function exportItems(formatId, items) {
   const stamp = new Date().toISOString().slice(0, 10);
   const base = `vault-export-${formatId}-${stamp}`;
   const out = { filename: `${base}.${fmt.ext}`, exported: supported.length, excluded, notes };
+  const files = attachmentCount(supported);
+  if (files && formatId !== 'vault-json') notes.push(`${files} attachment(s) can't be stored in this format and will be left out.`);
 
   switch (formatId) {
     case 'vault-json':
-      out.content = JSON.stringify({ format: 'vault-convert', version: 1, exportedAt: new Date().toISOString(), items: supported }, null, 2);
+      out.content = JSON.stringify({
+        format: 'vault-convert',
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        items: supported.map((it) => ({
+          ...it,
+          attachments: (it.attachments || []).map((a) => ({ name: a.name, size: a.size, data: toBase64(getAttachmentBytes(a.id) || new Uint8Array()) })),
+        })),
+      }, null, 2);
       out.mime = 'application/json';
       break;
     case 'generic-csv':

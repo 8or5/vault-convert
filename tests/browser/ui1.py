@@ -1,0 +1,60 @@
+import asyncio, sys
+from playwright.async_api import async_playwright
+import os; S=os.environ.get("VC_TMP", "/tmp/vc-browser")
+async def main():
+    async with async_playwright() as p:
+        b = await p.chromium.launch()
+        ctx = await b.new_context(permissions=["clipboard-read","clipboard-write"], accept_downloads=True)
+        page = await ctx.new_page()
+        errs=[]; reqs=[]
+        page.on("console", lambda m: errs.append(m.text) if m.type=="error" else None)
+        page.on("pageerror", lambda e: errs.append("PAGEERR "+str(e)))
+        page.on("request", lambda r: reqs.append(r.url) if not r.url.startswith(("file:","data:","blob:")) else None)
+        await page.goto("file://" + os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "dist")) + "/vault-convert.html")
+        print("secure", await page.evaluate("window.isSecureContext"), "fsa", await page.evaluate("'showOpenFilePicker' in window"))
+        await page.screenshot(path=S+"/s1.png")
+        # open kdbx via fallback input
+        await page.set_input_files("#kdbx-input", S+"/test.kdbx") if not await page.evaluate("'showOpenFilePicker' in window") else None
+        if await page.evaluate("'showOpenFilePicker' in window"):
+            # drop via file-input path: use import input which routes kdbx to open
+            await page.set_input_files("#file-input", S+"/test.kdbx")
+        await page.wait_for_selector("#cred-form")
+        await page.fill("input[name=password]","wrong")
+        await page.click("#cred-form button[type=submit]")
+        await page.wait_for_selector(".form-error:not([hidden])")
+        print("err:", await page.inner_text(".form-error"))
+        await page.fill("input[name=password]","hunter2 pw")
+        await page.click("#cred-form button[type=submit]")
+        await page.wait_for_selector("tr[data-row]")
+        print("rows", await page.locator("tr[data-row]").count())
+        await page.click("tr[data-row] >> text=Example")
+        await page.wait_for_selector(".vrow")
+        await page.click(".vrow[data-field=password]")
+        print("clip pw:", await page.evaluate("navigator.clipboard.readText()"))
+        await page.click(".vrow[data-field=username]")
+        print("clip user:", await page.evaluate("navigator.clipboard.readText()"))
+        await page.click(".vrow[data-field=totp]")
+        print("clip totp:", await page.evaluate("navigator.clipboard.readText()"))
+        await page.screenshot(path=S+"/s2.png")
+        # fill packet
+        await page.click("[data-action=fill].btn")
+        print("packet:", (await page.evaluate("navigator.clipboard.readText()"))[:20])
+        # edit, save (download fallback or handle)
+        await page.click("[data-action=edit-start]")
+        await page.fill("input[data-field=name]","Example Edited")
+        await page.press("input[data-field=name]","Tab")
+        print("dirty dot:", await page.locator(".dbchip .dirty").count())
+        # lock
+        await page.click("[data-action=db-lock]")
+        await page.wait_for_selector(".lock-card")
+        print("locked rows visible:", await page.locator("tr[data-row]").count())
+        await page.click(".lock-card [data-action=db-unlock]")
+        await page.fill("input[name=password]","hunter2 pw")
+        await page.click("#cred-form button[type=submit]")
+        await page.wait_for_selector("tr[data-row]")
+        print("after unlock names:", await page.locator("tr[data-row] strong").all_inner_texts())
+        await page.screenshot(path=S+"/s3.png")
+        print("external requests:", reqs)
+        print("errors:", errs)
+        await b.close()
+asyncio.run(main())

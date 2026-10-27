@@ -6,7 +6,7 @@
 <title>Vault Convert</title>
 <meta name="referrer" content="no-referrer" />
 <!-- No network access is possible from this page: every fetch, XHR, WebSocket and worker is blocked. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
 <style>/*__CSS__*/</style>
 </head>
 <body>
@@ -17,12 +17,14 @@
       <div><strong>Vault Convert</strong><small>Offline · nothing leaves this page</small></div>
     </div>
     <button class="btn ghost icon mobile-only" data-action="toggle-sidebar" aria-label="Toggle sidebar">☰</button>
+    <div id="dbbar" class="dbbar" hidden></div>
     <label class="search">
       <span class="sr-only">Search</span>
       <input id="search" type="search" placeholder="Search names, usernames, sites, notes  ( / )" autocomplete="off" />
     </label>
     <div class="top-actions">
       <button class="btn" data-action="import">Import</button>
+      <button class="btn" data-action="autofill" title="Fill logins without an extension">Autofill</button>
       <button class="btn" data-action="new-item" title="New item (N)">+ New</button>
       <button class="btn ghost" id="btn-undo" data-action="undo" title="Undo (Ctrl+Z)">Undo</button>
       <button class="btn primary" data-action="export" title="Export (Ctrl+E)">Export</button>
@@ -34,6 +36,7 @@
     <aside class="sidebar" id="sidebar" hidden></aside>
     <main class="main" id="main">
       <section id="welcome" class="welcome"></section>
+      <section id="lock" class="lock" hidden></section>
       <section id="workspace" class="workspace" hidden>
         <div id="banner"></div>
         <div class="toolbar">
@@ -60,7 +63,9 @@
   </div>
 
   <dialog id="modal" class="modal"></dialog>
-  <input type="file" id="file-input" multiple hidden accept=".csv,.json,.xml,.1pux,.1pif,.zip,.txt" />
+  <input type="file" id="file-input" multiple hidden accept=".csv,.json,.xml,.1pux,.1pif,.zip,.txt,.kdbx" />
+  <input type="file" id="kdbx-input" hidden accept=".kdbx" />
+  <input type="file" id="att-input" multiple hidden />
   <div id="toasts" class="toasts" aria-live="polite"></div>
 </div>
 <script>/*__JS__*/</script>
